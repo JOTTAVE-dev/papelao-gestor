@@ -33,7 +33,7 @@ button {
 .login-page {
   align-items: center;
   background:
-    linear-gradient(135deg, rgba(98, 135, 105, 0.2), transparent 38%),
+    linear-gradient(300deg, rgba(98, 135, 105, 0.2), transparent 38%),
     linear-gradient(315deg, rgba(180, 123, 72, 0.14), transparent 34%),
     #f4f1eb;
   display: flex;
@@ -44,8 +44,8 @@ button {
 
 .premium-login-page {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 42%),
-    #163528;
+    linear-gradient(180deg, rgba(255, 255, 255, 0.62), transparent 42%),
+    #f3ebdc;
   overflow: hidden;
   padding: 12px;
   position: relative;
@@ -53,8 +53,8 @@ button {
 
 .premium-login-page::before {
   background:
-    linear-gradient(90deg, transparent 0 11%, rgba(255, 255, 255, 0.08) 11% 12%, transparent 12% 21%, rgba(255, 255, 255, 0.06) 21% 22%, transparent 22%),
-    linear-gradient(0deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.06));
+    linear-gradient(90deg, transparent 0 11%, rgba(22, 53, 40, 0.08) 11% 12%, transparent 12% 21%, rgba(22, 53, 40, 0.06) 21% 22%, transparent 22%),
+    linear-gradient(0deg, rgba(22, 53, 40, 0.05), rgba(22, 53, 40, 0.05));
   bottom: -22px;
   content: "";
   height: 150px;
@@ -67,9 +67,9 @@ button {
 
 .login-card {
   background: #efe7d7;
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  border: 1px solid #ddd0bf;
   border-radius: 28px;
-  box-shadow: 0 36px 90px rgba(6, 22, 16, 0.34);
+  box-shadow: 0 30px 80px rgba(65, 51, 36, 0.14);
   display: grid;
   grid-template-columns: minmax(340px, 0.86fr) minmax(360px, 1fr);
   min-height: min(820px, calc(100vh - 24px));
