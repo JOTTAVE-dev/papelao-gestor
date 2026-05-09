@@ -8,8 +8,11 @@ import {
   CircleDollarSign,
   ShieldCheck,
   Download,
+  Eye,
   LayoutDashboard,
+  Lock,
   LogOut,
+  Mail,
   PackagePlus,
   Plus,
   ReceiptText,
@@ -134,7 +137,7 @@ export default function App() {
   }
 
   if (!session) {
-    return <LoginScreen onError={setError} error={error} />;
+    return <PremiumLoginScreen onError={setError} error={error} />;
   }
 
   const CurrentIcon = navItems.find((item) => item.page === page)?.icon || Warehouse;
@@ -215,6 +218,7 @@ function LoginScreen({ error, onError }: { error: string; onError: (value: strin
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [loading, setLoading] = useState(false);
   const [authNotice, setAuthNotice] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -270,6 +274,161 @@ function LoginScreen({ error, onError }: { error: string; onError: (value: strin
             {mode === 'login' ? 'Criar primeiro acesso do gestor' : 'Ja tenho acesso'}
           </button>
         </form>
+      </section>
+    </main>
+  );
+}
+
+function PremiumLoginScreen({ error, onError }: { error: string; onError: (value: string) => void }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [loading, setLoading] = useState(false);
+  const [authNotice, setAuthNotice] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+    onError('');
+    setAuthNotice('');
+    const authCall =
+      mode === 'login'
+        ? supabase.auth.signInWithPassword({ email, password })
+        : supabase.auth.signUp({ email, password });
+    const { data, error: authError } = await authCall;
+    if (authError) onError(authError.message);
+    if (!authError && mode === 'signup') {
+      if (data.session) {
+        setAuthNotice('Acesso criado. Entrando no sistema...');
+      } else {
+        setAuthNotice('Acesso criado. Verifique seu email e confirme o cadastro antes de entrar.');
+        setMode('login');
+      }
+    }
+    setLoading(false);
+  }
+
+  return (
+    <main className="login-page premium-login-page">
+      <section className="login-card">
+        <div className="login-left">
+          <div className="brand login-brand">
+            <div className="brand-mark">
+              <Warehouse size={26} />
+            </div>
+            <div>
+              <strong>Papelão Gestor</strong>
+              <span>Distribuidora de papelão</span>
+            </div>
+          </div>
+
+          <div className="login-copy">
+            <h1>{mode === 'login' ? 'Entrar' : 'Criar acesso'}</h1>
+            <p>
+              {mode === 'login'
+                ? 'Bem-vindo de volta. Acesse estoque, vendas, entradas e despesas.'
+                : 'Crie o primeiro acesso para administrar sua distribuidora.'}
+            </p>
+          </div>
+
+          <div className="role-options" aria-label="Tipo de acesso">
+            <span className="role-option active">
+              <span />
+              Administrador
+            </span>
+            <span className="role-option">
+              <span />
+              Equipe
+            </span>
+          </div>
+
+          <div className="login-divider">
+            <span>Acesso seguro</span>
+          </div>
+
+          <form onSubmit={submit} className="form-stack refined-login-form">
+            <label>
+              Email *
+              <div className="field-shell">
+                <Mail size={18} />
+                <input
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="gestor@empresa.com"
+                  type="email"
+                  required
+                />
+              </div>
+            </label>
+            <label>
+              <span className="label-row">
+                Senha *
+                <button className="forgot-link" type="button">
+                  Recuperar senha
+                </button>
+              </span>
+              <div className="field-shell">
+                <Lock size={18} />
+                <input
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Digite sua senha"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                />
+                <button
+                  className="field-icon"
+                  onClick={() => setShowPassword((current) => !current)}
+                  title="Mostrar ou ocultar senha"
+                  type="button"
+                >
+                  <Eye size={18} />
+                </button>
+              </div>
+            </label>
+            {error && <div className="notice danger">{error}</div>}
+            {authNotice && <div className="notice success">{authNotice}</div>}
+            <button className="login-submit" disabled={loading} type="submit">
+              {loading ? 'Entrando...' : mode === 'login' ? 'Entrar' : 'Criar acesso'}
+            </button>
+            <p className="signup-line">
+              {mode === 'login' ? 'Ainda nao tem acesso?' : 'Ja possui acesso?'}
+              <button className="inline-link" onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} type="button">
+                {mode === 'login' ? 'Criar primeiro acesso' : 'Entrar'}
+              </button>
+            </p>
+          </form>
+        </div>
+
+        <div className="login-right">
+          <div className="quote-block">
+            <span className="quote-mark">“</span>
+            <p>
+              O Papelão Gestor centraliza entradas, vendas, estoque e despesas em uma rotina simples. A equipe acompanha
+              o peso de cada mercadoria, evita vendas sem estoque e enxerga o resultado do dia com rapidez.
+            </p>
+            <span className="quote-mark end">”</span>
+          </div>
+
+          <div className="testimonial">
+            <div className="avatar">PG</div>
+            <div>
+              <strong>Gestor da distribuidora</strong>
+              <span>Controle operacional</span>
+            </div>
+          </div>
+
+          <div className="warehouse-art" aria-hidden="true">
+            <div className="building building-one" />
+            <div className="building building-two" />
+            <div className="building building-three" />
+            <div className="paper-stack stack-one" />
+            <div className="paper-stack stack-two" />
+            <div className="tree tree-one" />
+            <div className="tree tree-two" />
+          </div>
+        </div>
       </section>
     </main>
   );
