@@ -224,7 +224,7 @@ export default function App() {
             </h1>
           </div>
           <div className="heading-actions">
-            <button className="secondary-button" type="button">
+            <button className="secondary-button" type="button" onClick={() => setPage('backup')}>
               <ReceiptText size={17} />
               Relatório
             </button>
@@ -409,7 +409,21 @@ function PremiumLoginScreen({ error, onError }: { error: string; onError: (value
             <label>
               <span className="label-row">
                 Senha *
-                <button className="forgot-link" type="button">
+                <button
+                  className="forgot-link"
+                  onClick={async () => {
+                    onError('');
+                    setAuthNotice('');
+                    if (!email) {
+                      onError('Informe seu email para recuperar a senha.');
+                      return;
+                    }
+                    const { error: resetError } = await supabase.auth.resetPasswordForEmail(email);
+                    if (resetError) onError(resetError.message);
+                    else setAuthNotice('Enviamos as instrucoes de recuperacao para o email informado.');
+                  }}
+                  type="button"
+                >
                   Recuperar senha
                 </button>
               </span>
@@ -441,11 +455,11 @@ function PremiumLoginScreen({ error, onError }: { error: string; onError: (value
               <span>Ou</span>
             </div>
             <div className="social-row">
-              <button type="button" className="social-button">
+              <button type="button" className="social-button" disabled title="Login social ainda nao configurado">
                 <span className="google-mark">G</span>
                 Google
               </button>
-              <button type="button" className="social-button">
+              <button type="button" className="social-button" disabled title="Login social ainda nao configurado">
                 <span className="facebook-mark">f</span>
                 Facebook
               </button>

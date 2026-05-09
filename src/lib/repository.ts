@@ -39,6 +39,12 @@ function raise(error: unknown): never {
     if (message.includes('products_owner_name_unique_idx')) {
       throw new Error('Ja existe um produto cadastrado com esse nome.');
     }
+    if (message.includes('Could not find the table') && message.includes('profiles')) {
+      throw new Error('A tabela de perfis do Supabase ainda nao foi criada. Execute o SQL consolidado do projeto.');
+    }
+    if (message.includes('Could not find the function')) {
+      throw new Error('Uma funcao do Supabase ainda nao foi criada. Execute o SQL consolidado do projeto.');
+    }
     throw new Error(message);
   }
   throw new Error('Operacao nao concluida.');
@@ -54,7 +60,13 @@ async function requireUserId() {
 export async function getCurrentProfile() {
   const userId = await requireUserId();
   const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
-  if (error) raise(error);
+  if (error) {
+    const message = error.message || '';
+    if (message.includes('Could not find the table') || message.includes('schema cache')) {
+      return null;
+    }
+    raise(error);
+  }
   return (data as Profile | null) || null;
 }
 
@@ -71,9 +83,9 @@ async function selectAll<T>(table: string, order = 'created_at') {
 }
 
 export async function loadAppData(): Promise<AppData> {
-  const [currentProfile, profiles, products, suppliers, customers, entries, sales, expenses] = await Promise.all([
-    getCurrentProfile(),
-    selectAll<Profile>('profiles', 'created_at'),
+  const profileResult = await getCurrentProfile();
+  const [profiles, products, suppliers, customers, entries, sales, expenses] = await Promise.all([
+    selectAll<Profile>('profiles', 'created_at').catch(() => []),
     selectAll<Product>('products', 'name'),
     selectAll<Supplier>('suppliers', 'name'),
     selectAll<Customer>('customers', 'name'),
@@ -82,12 +94,22 @@ export async function loadAppData(): Promise<AppData> {
     selectAll<Expense>('expenses', 'occurred_at'),
   ]);
 
-  return { currentProfile, profiles, products, suppliers, customers, entries, sales, expenses };
+  return { currentProfile: profileResult, profiles, products, suppliers, customers, entries, sales, expenses };
+}
+
+function normalizeProductName(value: string) {
+  return value.trim().replace(/\s+/g, ' ');
 }
 
 export async function saveProduct(input: ProductInput, id?: string) {
   const ownerId = await requireCompanyOwnerId();
-  const name = input.name.trim();
+  const name = normalizeProductName(input.name);
+  if (!name) throw new Error('Informe o nome do produto.');
+  if (!input.category.trim()) throw new Error('Informe a categoria do produto.');
+  if (input.price_per_kg <= 0) throw new Error('O preco por kg deve ser maior que zero.');
+  if ((input.stock_kg || 0) < 0 || input.min_stock_kg < 0) {
+    throw new Error('Estoque e estoque minimo nao podem ser negativos.');
+  }
   const { data: existing, error: existingError } = await supabase
     .from('products')
     .select('id')
@@ -276,5 +298,24 @@ export async function deleteExpense(id: string) {
 
 export async function deleteProduct(id: string) {
   const { error } = await supabase.rpc('admin_delete_product', { p_product_id: id });
-  if (error) raise(error);
+  if (!error) return;
+
+  const message = error.message || '';
+  if (!message.includes('Could not find the function') && !message.includes('schema cache')) {
+    raise(error);
+  }
+
+  const ownerId = await requireCompanyOwnerId();
+  const [{ data: entries, error: entriesError }, { data: sales, error: salesError }] = await Promise.all([
+    supabase.from('stock_entries').select('id').eq('owner_id', ownerId).eq('product_id', id).limit(1),
+    supabase.from('sales').select('id').eq('owner_id', ownerId).eq('product_id', id).limit(1),
+  ]);
+
+  if (entriesError) raise(entriesError);
+  if (salesError) raise(salesError);
+  if (entries?.length) throw new Error('Este produto possui entradas registradas. Inative o produto para preservar o historico.');
+  if (sales?.length) throw new Error('Este produto possui vendas registradas. Inative o produto para preservar o historico.');
+
+  const { error: deleteError } = await supabase.from('products').delete().eq('owner_id', ownerId).eq('id', id);
+  if (deleteError) raise(deleteError);
 }
