@@ -1,0 +1,101 @@
+export type Product = {
+  id: string;
+  owner_id: string;
+  name: string;
+  category: string;
+  price_per_kg: number;
+  stock_kg: number;
+  min_stock_kg: number;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Supplier = {
+  id: string;
+  owner_id: string;
+  name: string;
+  phone: string | null;
+  document: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type Customer = {
+  id: string;
+  owner_id: string;
+  name: string;
+  phone: string | null;
+  document: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
+export type StockEntry = {
+  id: string;
+  owner_id: string;
+  product_id: string;
+  supplier_id: string;
+  weight_kg: number;
+  unit_cost: number;
+  total_cost: number;
+  occurred_at: string;
+  notes: string | null;
+  created_at: string;
+};
+
+export type Sale = {
+  id: string;
+  owner_id: string;
+  product_id: string;
+  customer_id: string;
+  weight_kg: number;
+  unit_price: number;
+  total_price: number;
+  occurred_at: string;
+  notes: string | null;
+  created_at: string;
+};
+
+export type ExpenseCategory = 'almoco' | 'frete' | 'manutencao' | 'combustivel' | 'outros';
+
+export type Expense = {
+  id: string;
+  owner_id: string;
+  description: string;
+  category: ExpenseCategory;
+  amount: number;
+  occurred_at: string;
+  notes: string | null;
+  created_at: string;
+};
+
+export type BackupPayload = {
+  version: 1;
+  exportedAt: string;
+  products: Product[];
+  suppliers: Supplier[];
+  customers: Customer[];
+  entries: StockEntry[];
+  sales: Sale[];
+  expenses: Expense[];
+};
+
+export type AppData = {
+  products: Product[];
+  suppliers: Supplier[];
+  customers: Customer[];
+  entries: StockEntry[];
+  sales: Sale[];
+  expenses: Expense[];
+};
+
+export type Page =
+  | 'dashboard'
+  | 'products'
+  | 'entries'
+  | 'sales'
+  | 'expenses'
+  | 'suppliers'
+  | 'customers'
+  | 'backup';
