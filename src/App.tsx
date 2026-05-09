@@ -345,6 +345,7 @@ function ProductsPage({ data, runAction }: PageProps) {
         <h2>{editing ? 'Editar produto' : 'Novo produto'}</h2>
         <ProductForm
           product={editing}
+          products={data.products}
           onCancel={() => setEditing(null)}
           onSubmit={(input) =>
             runAction('Produto salvo.', async () => {
@@ -377,10 +378,12 @@ function ProductsPage({ data, runAction }: PageProps) {
 
 function ProductForm({
   product,
+  products,
   onSubmit,
   onCancel,
 }: {
   product: Product | null;
+  products: Product[];
   onSubmit: (input: {
     name: string;
     category: string;
@@ -397,6 +400,9 @@ function ProductForm({
   const [stock, setStock] = useState(product?.stock_kg || 0);
   const [minimum, setMinimum] = useState(product?.min_stock_kg || 0);
   const [active, setActive] = useState(product?.active ?? true);
+  const duplicate = products.some(
+    (item) => item.id !== product?.id && normalizeName(item.name) === normalizeName(name),
+  );
 
   useEffect(() => {
     setName(product?.name || '');
@@ -412,6 +418,7 @@ function ProductForm({
       className="form-grid"
       onSubmit={(event) => {
         event.preventDefault();
+        if (duplicate) return;
         onSubmit({ name, category, price_per_kg: price, stock_kg: product ? undefined : stock, min_stock_kg: minimum, active });
       }}
     >
@@ -419,6 +426,7 @@ function ProductForm({
         Nome
         <input value={name} onChange={(event) => setName(event.target.value)} required />
       </label>
+      {duplicate && <div className="notice danger span-all">Ja existe um produto cadastrado com esse nome.</div>}
       <label>
         Categoria
         <input value={category} onChange={(event) => setCategory(event.target.value)} required />
@@ -447,7 +455,7 @@ function ProductForm({
             Cancelar
           </button>
         )}
-        <button className="primary-button" type="submit">
+        <button className="primary-button" disabled={duplicate} type="submit">
           <Save size={18} />
           Salvar
         </button>
@@ -961,6 +969,10 @@ function filterBy<T>(items: T[], query: string, getText: (item: T) => string) {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return items;
   return items.filter((item) => getText(item).toLowerCase().includes(normalized));
+}
+
+function normalizeName(value: string) {
+  return value.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 function getMessage(error: unknown) {

@@ -34,7 +34,11 @@ function cleanText(value: string) {
 
 function raise(error: unknown): never {
   if (error && typeof error === 'object' && 'message' in error) {
-    throw new Error(String(error.message));
+    const message = String(error.message);
+    if (message.includes('products_owner_name_unique_idx')) {
+      throw new Error('Ja existe um produto cadastrado com esse nome.');
+    }
+    throw new Error(message);
   }
   throw new Error('Operacao nao concluida.');
 }
@@ -67,9 +71,22 @@ export async function loadAppData(): Promise<AppData> {
 
 export async function saveProduct(input: ProductInput, id?: string) {
   const userId = await requireUserId();
+  const name = input.name.trim();
+  const { data: existing, error: existingError } = await supabase
+    .from('products')
+    .select('id')
+    .eq('owner_id', userId)
+    .ilike('name', name)
+    .maybeSingle();
+
+  if (existingError) raise(existingError);
+  if (existing && existing.id !== id) {
+    throw new Error('Ja existe um produto cadastrado com esse nome.');
+  }
+
   const payload = {
     owner_id: userId,
-    name: input.name.trim(),
+    name,
     category: input.category.trim(),
     price_per_kg: input.price_per_kg,
     min_stock_kg: input.min_stock_kg,

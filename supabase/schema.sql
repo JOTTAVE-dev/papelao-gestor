@@ -71,6 +71,7 @@ create table if not exists public.expenses (
 );
 
 create index if not exists products_owner_idx on public.products(owner_id);
+create unique index if not exists products_owner_name_unique_idx on public.products(owner_id, lower(trim(name)));
 create index if not exists suppliers_owner_idx on public.suppliers(owner_id);
 create index if not exists customers_owner_idx on public.customers(owner_id);
 create index if not exists stock_entries_owner_date_idx on public.stock_entries(owner_id, occurred_at desc);
