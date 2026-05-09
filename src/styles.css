@@ -439,6 +439,385 @@ button {
   width: 34px;
 }
 
+/* Authenticated RODPEL SaaS layout */
+.shell {
+  background:
+    linear-gradient(135deg, rgba(41, 91, 64, 0.08), transparent 34%),
+    linear-gradient(315deg, rgba(196, 124, 58, 0.12), transparent 38%),
+    #efe7d7;
+  gap: 22px;
+  grid-template-columns: 284px minmax(0, 1fr);
+  padding: 18px;
+  position: relative;
+}
+
+.shell::before {
+  background:
+    repeating-linear-gradient(90deg, rgba(32, 75, 54, 0.05) 0 1px, transparent 1px 46px),
+    repeating-linear-gradient(0deg, rgba(32, 75, 54, 0.04) 0 1px, transparent 1px 46px);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+.sidebar {
+  background: rgba(255, 253, 249, 0.9);
+  border: 1px solid rgba(209, 196, 177, 0.82);
+  border-radius: 28px;
+  box-shadow: 0 24px 60px rgba(65, 51, 36, 0.12);
+  color: #173327;
+  gap: 26px;
+  min-height: calc(100vh - 36px);
+  padding: 24px 18px;
+}
+
+.shell .brand {
+  border-bottom: 1px solid #ebe0d0;
+  padding: 4px 6px 22px;
+}
+
+.shell .brand-mark {
+  background: #173d2d;
+  border-radius: 14px;
+  box-shadow: 0 10px 26px rgba(23, 61, 45, 0.22);
+  color: #fff6e8;
+  font-size: 0;
+  font-weight: 950;
+}
+
+.shell .brand-mark::after {
+  content: "RP";
+  font-size: 0.92rem;
+}
+
+.shell .brand strong {
+  color: #173327;
+  font-size: 0;
+}
+
+.shell .brand strong::after {
+  content: "RODPEL";
+  font-size: 1.08rem;
+  letter-spacing: 0.02em;
+}
+
+.shell .brand span {
+  color: #7a7065;
+  font-size: 0;
+}
+
+.shell .brand span::after {
+  content: "Gestor de papelao";
+  font-size: 0.82rem;
+}
+
+.shell nav {
+  gap: 10px;
+}
+
+.nav-button,
+.exit {
+  border-radius: 16px;
+  color: #637065;
+  font-weight: 780;
+  min-height: 46px;
+  padding: 11px 13px;
+}
+
+.nav-button svg,
+.exit svg {
+  color: #7c8b80;
+}
+
+.nav-button:hover,
+.nav-button.active {
+  background: #e6f0df;
+  border-color: #d6e4cb;
+  color: #173d2d;
+}
+
+.nav-button.active svg,
+.nav-button:hover svg {
+  color: #295b40;
+}
+
+.sidebar-profile {
+  align-items: center;
+  background: #f4efe6;
+  border: 1px solid #e1d5c5;
+  border-radius: 18px;
+  display: flex;
+  gap: 11px;
+  margin-top: auto;
+  min-width: 0;
+  padding: 12px;
+}
+
+.profile-avatar {
+  align-items: center;
+  background: linear-gradient(135deg, #173d2d, #c47c3a);
+  border-radius: 50%;
+  color: #fff6e8;
+  display: flex;
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  font-weight: 950;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
+}
+
+.sidebar-profile strong,
+.sidebar-profile span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-profile strong {
+  color: #173327;
+  font-size: 0.88rem;
+}
+
+.sidebar-profile span {
+  color: #83776a;
+  font-size: 0.74rem;
+  max-width: 170px;
+}
+
+.main {
+  background: rgba(255, 253, 249, 0.78);
+  border: 1px solid rgba(209, 196, 177, 0.72);
+  border-radius: 32px;
+  box-shadow: 0 24px 70px rgba(65, 51, 36, 0.13);
+  min-height: calc(100vh - 36px);
+  overflow: hidden;
+  padding: 30px;
+}
+
+.topbar {
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  color: #7e776b;
+}
+
+.topbar h1 {
+  color: #173327;
+  font-size: clamp(1.75rem, 3vw, 2.55rem);
+  font-weight: 900;
+}
+
+.topbar h1 svg {
+  color: #295b40;
+}
+
+.icon-button {
+  background: #f5efe5;
+  border-color: #dfd2c2;
+  border-radius: 14px;
+  color: #295b40;
+}
+
+.content-grid {
+  gap: 18px;
+}
+
+.two-column {
+  gap: 18px;
+}
+
+.panel,
+.metric {
+  background: rgba(255, 253, 249, 0.96);
+  border: 1px solid #e1d7c8;
+  border-radius: 22px;
+  box-shadow: 0 16px 44px rgba(65, 51, 36, 0.09);
+}
+
+.panel {
+  padding: 22px;
+}
+
+.panel h2 {
+  color: #173327;
+  font-size: 1.08rem;
+  font-weight: 900;
+}
+
+.metric {
+  min-height: 138px;
+  overflow: hidden;
+  padding: 20px;
+  position: relative;
+}
+
+.metric::after {
+  background: #e6f0df;
+  border-radius: 999px;
+  content: "";
+  height: 78px;
+  position: absolute;
+  right: -28px;
+  top: -28px;
+  width: 78px;
+}
+
+.metric svg {
+  background: #e6f0df;
+  border-radius: 13px;
+  color: #295b40;
+  height: 42px;
+  padding: 10px;
+  width: 42px;
+}
+
+.metric span {
+  color: #766e63;
+  font-weight: 780;
+}
+
+.metric strong {
+  color: #173327;
+  font-size: clamp(1.25rem, 2vw, 1.72rem);
+  font-weight: 950;
+}
+
+table {
+  min-width: 720px;
+}
+
+th {
+  color: #7b7167;
+}
+
+td {
+  color: #2f3c34;
+}
+
+tr:hover td {
+  background: #fbf7ef;
+}
+
+.panel-title-row {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.panel-title-row h2 {
+  margin: 0;
+}
+
+.chart-legend {
+  align-items: center;
+  color: #756c61;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  font-weight: 800;
+  gap: 12px;
+}
+
+.chart-legend span {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.chart-legend i {
+  border-radius: 50%;
+  display: inline-flex;
+  height: 9px;
+  width: 9px;
+}
+
+.legend-soft {
+  background: #9fb990;
+}
+
+.legend-strong {
+  background: #173d2d;
+}
+
+.performance-card {
+  position: relative;
+}
+
+.performance-card::after {
+  border: 2px dashed rgba(41, 91, 64, 0.18);
+  border-radius: 26px;
+  content: "";
+  inset: 12px;
+  pointer-events: none;
+  position: absolute;
+}
+
+.bar-chart {
+  align-items: end;
+  background:
+    linear-gradient(0deg, transparent 0 19%, rgba(23, 61, 45, 0.07) 19% 20%, transparent 20% 39%, rgba(23, 61, 45, 0.07) 39% 40%, transparent 40% 59%, rgba(23, 61, 45, 0.07) 59% 60%, transparent 60% 79%, rgba(23, 61, 45, 0.07) 79% 80%, transparent 80%),
+    #fffdf9;
+  border-radius: 18px;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-height: 260px;
+  padding: 34px 24px 18px;
+  position: relative;
+  z-index: 1;
+}
+
+.bar-group {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  height: 100%;
+}
+
+.bars {
+  align-items: end;
+  display: flex;
+  gap: 10px;
+  height: 190px;
+  justify-content: center;
+}
+
+.bars span {
+  border-radius: 999px 999px 10px 10px;
+  display: block;
+  min-height: 22px;
+  width: clamp(18px, 3vw, 32px);
+}
+
+.bars span:nth-child(1) {
+  background: #9fb990;
+}
+
+.bars span:nth-child(2) {
+  background: #173d2d;
+}
+
+.bars span:nth-child(3) {
+  background: #e6dccb;
+}
+
+.bar-group strong {
+  color: #756c61;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
 .login-panel {
   background: #fffdf9;
   border: 1px solid #ded6ca;

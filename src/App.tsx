@@ -174,6 +174,14 @@ export default function App() {
           })}
         </nav>
 
+        <div className="sidebar-profile">
+          <div className="profile-avatar">RP</div>
+          <div>
+            <strong>{data.currentProfile?.name || 'Administrador'}</strong>
+            <span>{session.user.email}</span>
+          </div>
+        </div>
+
         <button className="nav-button exit" onClick={() => supabase.auth.signOut()} type="button">
           <LogOut size={18} />
           Sair
@@ -478,6 +486,32 @@ function Dashboard({ data }: { data: AppData }) {
       <Metric icon={ReceiptText} label="Despesas hoje" value={formatMoney(totalExpenses)} />
       <Metric icon={Archive} label="Saldo estimado" value={formatMoney(totalSales - totalExpenses)} />
       <Metric icon={AlertTriangle} label="Estoque baixo" value={`${lowStock.length} produtos`} />
+
+      <section className="panel performance-card span-2">
+        <div className="panel-title-row">
+          <h2>Performance</h2>
+          <div className="chart-legend">
+            <span><i className="legend-soft" /> Entradas</span>
+            <span><i className="legend-strong" /> Vendas</span>
+          </div>
+        </div>
+        <div className="bar-chart" aria-label="Resumo visual de performance">
+          {[
+            { label: 'Produtos', a: Math.min(data.products.length * 12, 92), b: Math.min(data.products.filter((product) => product.active).length * 14, 88) },
+            { label: 'Entradas', a: Math.min(data.entries.length * 16, 94), b: Math.min(salesToday.length * 18, 86) },
+            { label: 'Financeiro', a: Math.min(totalSales / 80, 92), b: Math.min(Math.max(totalSales - totalExpenses, 0) / 80, 86) },
+          ].map((group) => (
+            <div className="bar-group" key={group.label}>
+              <div className="bars">
+                <span style={{ height: `${Math.max(group.a, 12)}%` }} />
+                <span style={{ height: `${Math.max(group.b, 12)}%` }} />
+                <span style={{ height: '28%' }} />
+              </div>
+              <strong>{group.label}</strong>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className="panel span-2">
         <h2>Alertas de estoque</h2>
