@@ -1819,6 +1819,13 @@ textarea:focus {
   color: #8a3326;
 }
 
+.row-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .icon-button {
   height: 42px;
   width: 42px;

@@ -35,6 +35,7 @@ import {
   createStockEntry,
   createUser,
   deleteExpense,
+  deleteProduct,
   deleteSale,
   deleteStockEntry,
   exportBackup,
@@ -243,7 +244,7 @@ export default function App() {
         {loading && <div className="notice neutral">Atualizando dados...</div>}
 
         {page === 'dashboard' && <Dashboard data={data} />}
-        {page === 'products' && <ProductsPage data={data} runAction={runAction} />}
+        {page === 'products' && <ProductsPage data={data} runAction={runAction} isAdmin={isAdmin} />}
         {page === 'entries' && <EntriesPage data={data} runAction={runAction} isAdmin={isAdmin} />}
         {page === 'sales' && <SalesPage data={data} runAction={runAction} isAdmin={isAdmin} />}
         {page === 'expenses' && <ExpensesPage data={data} runAction={runAction} isAdmin={isAdmin} />}
@@ -652,7 +653,7 @@ function Dashboard({ data }: { data: AppData }) {
   );
 }
 
-function ProductsPage({ data, runAction }: PageProps) {
+function ProductsPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean }) {
   const [editing, setEditing] = useState<Product | null>(null);
   const [query, setQuery] = useState('');
   const filtered = filterBy(data.products, query, (product) => `${product.name} ${product.category}`);
@@ -677,16 +678,32 @@ function ProductsPage({ data, runAction }: PageProps) {
         <PanelSearch value={query} onChange={setQuery} placeholder="Buscar produto" />
         <Table
           empty="Nenhum produto cadastrado."
-          headers={['Produto', 'Preco/kg', 'Estoque', 'Minimo', 'Status', '']}
+          headers={isAdmin ? ['Produto', 'Preco/kg', 'Estoque', 'Minimo', 'Status', 'Ações'] : ['Produto', 'Preco/kg', 'Estoque', 'Minimo', 'Status', '']}
           rows={filtered.map((product) => [
             <strong>{product.name}</strong>,
             formatMoney(product.price_per_kg),
             formatKg(product.stock_kg),
             formatKg(product.min_stock_kg),
             product.active ? 'Ativo' : 'Inativo',
-            <button className="small-button" onClick={() => setEditing(product)} type="button">
-              Editar
-            </button>,
+            <div className="row-actions">
+              <button className="small-button" onClick={() => setEditing(product)} type="button">
+                Editar
+              </button>
+              {isAdmin && (
+                <button
+                  className="small-button danger-button"
+                  onClick={() =>
+                    confirmAction(
+                      'Apagar este produto? Isso só será permitido se ele não tiver entradas ou vendas.',
+                      () => runAction('Produto apagado.', () => deleteProduct(product.id)),
+                    )
+                  }
+                  type="button"
+                >
+                  Apagar
+                </button>
+              )}
+            </div>,
           ])}
         />
       </section>

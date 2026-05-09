@@ -319,9 +319,39 @@ begin
 end;
 $$;
 
+create or replace function public.admin_delete_product(p_product_id uuid)
+returns void
+language plpgsql
+as $$
+declare
+  v_owner uuid := public.current_company_owner_id();
+begin
+  if not public.current_user_is_admin() then
+    raise exception 'Apenas administradores podem apagar produtos.';
+  end if;
+
+  if exists (select 1 from public.stock_entries where product_id = p_product_id and owner_id = v_owner) then
+    raise exception 'Este produto possui entradas registradas. Inative o produto para preservar o historico.';
+  end if;
+
+  if exists (select 1 from public.sales where product_id = p_product_id and owner_id = v_owner) then
+    raise exception 'Este produto possui vendas registradas. Inative o produto para preservar o historico.';
+  end if;
+
+  delete from public.products
+   where id = p_product_id
+     and owner_id = v_owner;
+
+  if not found then
+    raise exception 'Produto nao encontrado.';
+  end if;
+end;
+$$;
+
 grant execute on function public.current_company_owner_id() to authenticated;
 grant execute on function public.current_user_is_admin() to authenticated;
 grant execute on function public.admin_update_user_role(uuid, text) to authenticated;
 grant execute on function public.admin_delete_stock_entry(uuid) to authenticated;
 grant execute on function public.admin_delete_sale(uuid) to authenticated;
 grant execute on function public.admin_delete_expense(uuid) to authenticated;
+grant execute on function public.admin_delete_product(uuid) to authenticated;

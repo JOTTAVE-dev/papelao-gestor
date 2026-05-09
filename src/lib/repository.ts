@@ -273,3 +273,8 @@ export async function deleteExpense(id: string) {
   const { error } = await supabase.rpc('admin_delete_expense', { p_expense_id: id });
   if (error) raise(error);
 }
+
+export async function deleteProduct(id: string) {
+  const { error } = await supabase.rpc('admin_delete_product', { p_product_id: id });
+  if (error) raise(error);
+}
