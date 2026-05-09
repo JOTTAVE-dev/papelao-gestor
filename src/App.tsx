@@ -7,6 +7,7 @@ import {
   Bell,
   Boxes,
   CalendarDays,
+  Check,
   CircleDollarSign,
   ShieldCheck,
   Download,
@@ -15,6 +16,7 @@ import {
   Lock,
   LogOut,
   Mail,
+  Mic,
   PackagePlus,
   Plus,
   ReceiptText,
@@ -28,10 +30,13 @@ import {
   Upload,
   Users,
   Warehouse,
+  X,
 } from 'lucide-react';
 import { hasSupabaseConfig, supabase } from './lib/supabase';
 import {
   createSale,
+  createCustomer,
+  createSupplier,
   createStockEntry,
   createUser,
   deleteExpense,
@@ -69,11 +74,51 @@ const expenseLabels: Record<ExpenseCategory, string> = {
   outros: 'Outros',
 };
 
+type VoiceIntent = 'entrada' | 'venda' | 'saida' | 'despesa' | 'produto';
+
+type ParsedVoiceCommand = {
+  intent: VoiceIntent;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  totalValue: number;
+  supplierName: string;
+  customerName: string;
+  expenseDescription: string;
+  confidence: number;
+  warnings: string[];
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+type SpeechRecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  start: () => void;
+  stop: () => void;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  onend: (() => void) | null;
+};
+
+type SpeechRecognitionEventLike = {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+};
+
+declare global {
+  interface Window {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  }
+}
+
 const navItems = [
   { page: 'dashboard' as Page, label: 'Dashboard', icon: LayoutDashboard },
   { page: 'products' as Page, label: 'Produtos e Estoque', icon: Boxes },
   { page: 'entries' as Page, label: 'Entradas', icon: PackagePlus },
   { page: 'sales' as Page, label: 'Vendas e Saidas', icon: ShoppingCart },
+  { page: 'voice' as Page, label: 'Lançar por Áudio', icon: Mic },
   { page: 'expenses' as Page, label: 'Despesas', icon: ReceiptText },
   { page: 'suppliers' as Page, label: 'Fornecedores', icon: Truck },
   { page: 'customers' as Page, label: 'Clientes', icon: Users },
@@ -247,6 +292,7 @@ export default function App() {
         {page === 'products' && <ProductsPage data={data} runAction={runAction} isAdmin={isAdmin} />}
         {page === 'entries' && <EntriesPage data={data} runAction={runAction} isAdmin={isAdmin} />}
         {page === 'sales' && <SalesPage data={data} runAction={runAction} isAdmin={isAdmin} />}
+        {page === 'voice' && <VoicePage data={data} runAction={runAction} />}
         {page === 'expenses' && <ExpensesPage data={data} runAction={runAction} isAdmin={isAdmin} />}
         {page === 'suppliers' && <ContactsPage type="suppliers" data={data} runAction={runAction} />}
         {page === 'customers' && <ContactsPage type="customers" data={data} runAction={runAction} />}
@@ -662,6 +708,234 @@ function Dashboard({ data }: { data: AppData }) {
           headers={['Tipo', 'Descricao', 'Data']}
           rows={recent.map((item) => [item.kind, item.text, formatDateTime(item.at)])}
         />
+      </section>
+    </div>
+  );
+}
+
+function VoicePage({ data, runAction }: PageProps) {
+  const [listening, setListening] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [speechError, setSpeechError] = useState('');
+  const [parsed, setParsed] = useState<ParsedVoiceCommand | null>(null);
+
+  const recognitionAvailable = typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  function startListening() {
+    setSpeechError('');
+    if (!recognitionAvailable) {
+      setSpeechError('Seu navegador nao suporta reconhecimento de voz. No celular, teste pelo Chrome.');
+      return;
+    }
+
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) return;
+
+    const recognition = new Recognition();
+    recognition.lang = 'pt-BR';
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.onresult = (event) => {
+      const text = Array.from(event.results)
+        .map((result) => result[0]?.transcript || '')
+        .join(' ')
+        .trim();
+      setTranscript(text);
+      setParsed(parseVoiceCommand(text));
+    };
+    recognition.onerror = (event) => {
+      setSpeechError(`Nao foi possivel entender o audio${event.error ? `: ${event.error}` : '.'}`);
+      setListening(false);
+    };
+    recognition.onend = () => setListening(false);
+    setListening(true);
+    recognition.start();
+  }
+
+  function updateParsed<K extends keyof ParsedVoiceCommand>(key: K, value: ParsedVoiceCommand[K]) {
+    setParsed((current) => (current ? { ...current, [key]: value } : current));
+  }
+
+  async function confirmVoiceCommand() {
+    if (!parsed) return;
+    await runAction('Lancamento por audio confirmado.', async () => {
+      if (parsed.intent === 'produto') {
+        await saveProduct({
+          name: parsed.productName,
+          category: 'Papelão',
+          price_per_kg: parsed.unitPrice || parsed.totalValue,
+          min_stock_kg: 0,
+          active: true,
+        });
+        return;
+      }
+
+      if (parsed.intent === 'despesa') {
+        await saveExpense({
+          description: parsed.expenseDescription || 'Despesa por audio',
+          category: inferExpenseCategory(parsed.expenseDescription),
+          amount: parsed.totalValue,
+          occurred_at: new Date().toISOString(),
+          notes: transcript,
+        });
+        return;
+      }
+
+      const product = findByName(data.products, parsed.productName);
+      if (!product) throw new Error('Produto nao encontrado. Cadastre ou selecione um produto existente antes de confirmar.');
+
+      if (parsed.intent === 'entrada') {
+        const supplier = findByName(data.suppliers, parsed.supplierName) || (await createSupplier({
+          name: parsed.supplierName || 'Fornecedor por audio',
+          phone: '',
+          document: '',
+          notes: 'Criado por lançamento de áudio.',
+        }));
+        await createStockEntry({
+          product_id: product.id,
+          supplier_id: supplier.id,
+          weight_kg: parsed.quantity,
+          unit_cost: parsed.unitPrice || parsed.totalValue / parsed.quantity,
+          total_cost: parsed.totalValue || parsed.quantity * parsed.unitPrice,
+          occurred_at: new Date().toISOString(),
+          notes: transcript,
+        });
+        return;
+      }
+
+      if (parsed.intent === 'venda') {
+        const customer = findByName(data.customers, parsed.customerName) || (await createCustomer({
+          name: parsed.customerName || 'Cliente por audio',
+          phone: '',
+          document: '',
+          notes: 'Criado por lançamento de áudio.',
+        }));
+        await createSale({
+          product_id: product.id,
+          customer_id: customer.id,
+          weight_kg: parsed.quantity,
+          unit_price: parsed.unitPrice || parsed.totalValue / parsed.quantity || product.price_per_kg,
+          total_price: parsed.totalValue || parsed.quantity * (parsed.unitPrice || product.price_per_kg),
+          occurred_at: new Date().toISOString(),
+          notes: transcript,
+        });
+        return;
+      }
+
+      throw new Error('Saida de estoque sem cliente ainda precisa ser revisada manualmente. Use venda ou informe um cliente.');
+    });
+    setParsed(null);
+    setTranscript('');
+  }
+
+  const canConfirm = parsed ? validateVoiceCommand(parsed, data).length === 0 : false;
+  const validationMessages = parsed ? validateVoiceCommand(parsed, data) : [];
+
+  return (
+    <div className="voice-layout">
+      <section className="panel voice-panel">
+        <div className="voice-hero">
+          <button className={listening ? 'mic-button listening' : 'mic-button'} onClick={startListening} type="button">
+            <Mic size={34} />
+          </button>
+          <div>
+            <h2>Lançamento por áudio</h2>
+            <p>Toque no microfone, fale o comando e revise os dados antes de salvar.</p>
+          </div>
+        </div>
+
+        {speechError && <div className="notice danger">{speechError}</div>}
+        {!recognitionAvailable && <div className="notice neutral">Reconhecimento de voz disponível principalmente no Chrome/Android.</div>}
+
+        <label>
+          Texto reconhecido
+          <textarea
+            value={transcript}
+            onChange={(event) => {
+              setTranscript(event.target.value);
+              setParsed(event.target.value.trim() ? parseVoiceCommand(event.target.value) : null);
+            }}
+            placeholder="Ex.: Chegou 500 folhas de papelão onda B do fornecedor João, preço 2 reais cada."
+          />
+        </label>
+      </section>
+
+      <section className="panel voice-panel">
+        <h2>Confirmação antes de salvar</h2>
+        {!parsed && <div className="empty-state">Nenhum comando interpretado ainda.</div>}
+        {parsed && (
+          <div className="form-grid">
+            <label>
+              Tipo
+              <select value={parsed.intent} onChange={(event) => updateParsed('intent', event.target.value as VoiceIntent)}>
+                <option value="entrada">Entrada</option>
+                <option value="venda">Venda</option>
+                <option value="saida">Saída</option>
+                <option value="despesa">Despesa</option>
+                <option value="produto">Cadastro de produto</option>
+              </select>
+            </label>
+            {parsed.intent !== 'despesa' && (
+              <label>
+                Produto
+                <input value={parsed.productName} onChange={(event) => updateParsed('productName', event.target.value)} />
+              </label>
+            )}
+            {parsed.intent !== 'produto' && parsed.intent !== 'despesa' && (
+              <label>
+                Quantidade
+                <input min="0" step="0.01" type="number" value={parsed.quantity} onChange={(event) => updateParsed('quantity', Number(event.target.value))} />
+              </label>
+            )}
+            {(parsed.intent === 'entrada' || parsed.intent === 'produto') && (
+              <label>
+                Preço unitário
+                <input min="0" step="0.01" type="number" value={parsed.unitPrice} onChange={(event) => updateParsed('unitPrice', Number(event.target.value))} />
+              </label>
+            )}
+            {(parsed.intent === 'venda' || parsed.intent === 'despesa') && (
+              <label>
+                Valor total
+                <input min="0" step="0.01" type="number" value={parsed.totalValue} onChange={(event) => updateParsed('totalValue', Number(event.target.value))} />
+              </label>
+            )}
+            {parsed.intent === 'entrada' && (
+              <label>
+                Fornecedor
+                <input value={parsed.supplierName} onChange={(event) => updateParsed('supplierName', event.target.value)} />
+              </label>
+            )}
+            {parsed.intent === 'venda' && (
+              <label>
+                Cliente
+                <input value={parsed.customerName} onChange={(event) => updateParsed('customerName', event.target.value)} />
+              </label>
+            )}
+            {parsed.intent === 'despesa' && (
+              <label className="span-all">
+                Descrição
+                <input value={parsed.expenseDescription} onChange={(event) => updateParsed('expenseDescription', event.target.value)} />
+              </label>
+            )}
+            {(parsed.warnings.length > 0 || validationMessages.length > 0) && (
+              <div className="notice neutral span-all">
+                {[...parsed.warnings, ...validationMessages].map((message) => (
+                  <div key={message}>{message}</div>
+                ))}
+              </div>
+            )}
+            <div className="form-actions">
+              <button className="secondary-button" onClick={() => setParsed(null)} type="button">
+                <X size={18} />
+                Cancelar
+              </button>
+              <button className="primary-button" disabled={!canConfirm} onClick={confirmVoiceCommand} type="button">
+                <Check size={18} />
+                Confirmar e salvar
+              </button>
+            </div>
+          </div>
+        )}
       </section>
     </div>
   );
@@ -1429,6 +1703,135 @@ function filterBy<T>(items: T[], query: string, getText: (item: T) => string) {
 
 function normalizeName(value: string) {
   return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function normalizeSpeech(value: string) {
+  return normalizeName(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function parseVoiceCommand(text: string): ParsedVoiceCommand {
+  const normalized = normalizeSpeech(text);
+  const intent = inferIntent(normalized);
+  const quantity = extractFirstNumber(normalized) || 0;
+  const totalValue = extractMoneyAfter(normalized, ['valor total', 'total', 'valor', 'despesa de']) || 0;
+  const unitPrice = extractMoneyAfter(normalized, ['preco de venda', 'preco', 'cada', 'por']) || 0;
+  const supplierName = extractNameAfter(normalized, ['fornecedor']);
+  const customerName = extractNameAfter(normalized, ['cliente']);
+  const productName = extractProductName(normalized, intent);
+  const expenseDescription = intent === 'despesa' ? extractExpenseDescription(normalized) : '';
+  const warnings: string[] = [];
+
+  if (!productName && intent !== 'despesa') warnings.push('Nao identifiquei o produto com seguranca.');
+  if (!quantity && intent !== 'produto' && intent !== 'despesa') warnings.push('Nao identifiquei a quantidade.');
+  if (!totalValue && !unitPrice && intent !== 'saida') warnings.push('Nao identifiquei valor ou preco.');
+  if (intent === 'entrada' && !supplierName) warnings.push('Fornecedor nao identificado; voce pode preencher antes de confirmar.');
+  if (intent === 'venda' && !customerName) warnings.push('Cliente nao identificado; voce pode preencher antes de confirmar.');
+
+  return {
+    intent,
+    productName,
+    quantity,
+    unitPrice,
+    totalValue,
+    supplierName,
+    customerName,
+    expenseDescription,
+    confidence: Math.max(0.35, 1 - warnings.length * 0.15),
+    warnings,
+  };
+}
+
+function inferIntent(text: string): VoiceIntent {
+  if (/(cadastre|cadastrar|novo produto|produto chamado|chamado)/.test(text)) return 'produto';
+  if (/(despesa|gasto|paguei|pagamento)/.test(text)) return 'despesa';
+  if (/(vendi|venda|cliente)/.test(text)) return 'venda';
+  if (/(chegou|entrada|recebi|compramos|fornecedor)/.test(text)) return 'entrada';
+  if (/(saiu|saida|retirei|baixar|baixa)/.test(text)) return 'saida';
+  return 'entrada';
+}
+
+function extractFirstNumber(text: string) {
+  const match = text.match(/(\d+(?:[,.]\d+)?)/);
+  return match ? Number(match[1].replace(',', '.')) : 0;
+}
+
+function extractMoneyAfter(text: string, markers: string[]) {
+  for (const marker of markers) {
+    const index = text.indexOf(marker);
+    if (index === -1) continue;
+    const slice = text.slice(index + marker.length, index + marker.length + 42);
+    const match = slice.match(/(\d+(?:[,.]\d+)?)/);
+    if (match) return Number(match[1].replace(',', '.'));
+  }
+  return 0;
+}
+
+function extractNameAfter(text: string, markers: string[]) {
+  for (const marker of markers) {
+    const match = text.match(new RegExp(`${marker}\\s+([a-z0-9\\s]+?)(?:,| preco| valor| total|$)`));
+    if (match?.[1]) return toTitle(match[1]);
+  }
+  return '';
+}
+
+function extractProductName(text: string, intent: VoiceIntent) {
+  if (intent === 'produto') {
+    const byCalled = text.match(/(?:chamado|produto chamado|nome)\s+([a-z0-9\s]+?)(?:,| preco| valor|$)/);
+    if (byCalled?.[1]) return toTitle(byCalled[1]);
+  }
+
+  const productMatch = text.match(/(?:de|do|da)\s+([a-z0-9\s]+?)(?:\s+do fornecedor|\s+da fornecedor|\s+para cliente|\s+cliente|,| preco| valor| total|$)/);
+  if (productMatch?.[1]) {
+    return toTitle(productMatch[1].replace(/^(papelao\s+)?/, 'papelao '));
+  }
+  return '';
+}
+
+function extractExpenseDescription(text: string) {
+  const match = text.match(/(?:com|de)\s+([a-z0-9\s]+?)(?:,|$)/);
+  return match?.[1] ? toTitle(match[1]) : 'Despesa por audio';
+}
+
+function toTitle(value: string) {
+  return value
+    .trim()
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function findByName<T extends { name: string }>(items: T[], name: string) {
+  const normalized = normalizeSpeech(name);
+  if (!normalized) return undefined;
+  return items.find((item) => normalizeSpeech(item.name) === normalized || normalizeSpeech(item.name).includes(normalized));
+}
+
+function inferExpenseCategory(description: string): ExpenseCategory {
+  const normalized = normalizeSpeech(description);
+  if (/funcionario|almoco|comida|refeicao/.test(normalized)) return 'almoco';
+  if (/frete|entrega|transporte/.test(normalized)) return 'frete';
+  if (/manutencao|conserto|reparo/.test(normalized)) return 'manutencao';
+  if (/combustivel|gasolina|diesel/.test(normalized)) return 'combustivel';
+  return 'outros';
+}
+
+function validateVoiceCommand(command: ParsedVoiceCommand, data: AppData) {
+  const messages: string[] = [];
+  if (command.intent !== 'despesa' && !command.productName.trim()) messages.push('Informe o produto.');
+  if (command.intent !== 'produto' && command.intent !== 'despesa' && command.quantity <= 0) messages.push('Informe uma quantidade maior que zero.');
+  if (command.intent === 'produto' && command.unitPrice <= 0 && command.totalValue <= 0) messages.push('Informe o preço de venda do produto.');
+  if (command.intent === 'despesa' && command.totalValue <= 0) messages.push('Informe o valor da despesa.');
+  if (command.intent === 'entrada' && command.unitPrice <= 0 && command.totalValue <= 0) messages.push('Informe preço unitário ou valor total da entrada.');
+  if (command.intent === 'venda' && command.totalValue <= 0 && command.unitPrice <= 0) messages.push('Informe o valor da venda.');
+  if ((command.intent === 'entrada' || command.intent === 'venda' || command.intent === 'saida') && !findByName(data.products, command.productName)) {
+    messages.push('Produto ainda não encontrado no cadastro.');
+  }
+  if (command.intent === 'saida') messages.push('Saída sem cliente ainda não salva automaticamente; converta para venda ou lance manualmente.');
+  return messages;
 }
 
 function confirmAction(message: string, action: () => void) {

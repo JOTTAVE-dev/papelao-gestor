@@ -147,6 +147,40 @@ export async function saveCustomer(input: ContactInput, id?: string) {
   await saveContact('customers', input, id);
 }
 
+export async function createSupplier(input: ContactInput) {
+  const ownerId = await requireCompanyOwnerId();
+  const { data, error } = await supabase
+    .from('suppliers')
+    .insert({
+      owner_id: ownerId,
+      name: input.name.trim(),
+      phone: cleanText(input.phone),
+      document: cleanText(input.document),
+      notes: cleanText(input.notes),
+    })
+    .select('*')
+    .single();
+  if (error) raise(error);
+  return data as Supplier;
+}
+
+export async function createCustomer(input: ContactInput) {
+  const ownerId = await requireCompanyOwnerId();
+  const { data, error } = await supabase
+    .from('customers')
+    .insert({
+      owner_id: ownerId,
+      name: input.name.trim(),
+      phone: cleanText(input.phone),
+      document: cleanText(input.document),
+      notes: cleanText(input.notes),
+    })
+    .select('*')
+    .single();
+  if (error) raise(error);
+  return data as Customer;
+}
+
 async function saveContact(table: 'suppliers' | 'customers', input: ContactInput, id?: string) {
   const ownerId = await requireCompanyOwnerId();
   const payload = {
