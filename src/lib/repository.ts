@@ -5,6 +5,7 @@ import type {
   Customer,
   Expense,
   ExpenseCategory,
+  Profile,
   Product,
   Sale,
   StockEntry,
@@ -50,6 +51,19 @@ async function requireUserId() {
   return data.user.id;
 }
 
+export async function getCurrentProfile() {
+  const userId = await requireUserId();
+  const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+  if (error) raise(error);
+  return (data as Profile | null) || null;
+}
+
+async function requireCompanyOwnerId() {
+  const userId = await requireUserId();
+  const profile = await getCurrentProfile();
+  return profile?.company_owner_id || userId;
+}
+
 async function selectAll<T>(table: string, order = 'created_at') {
   const { data, error } = await supabase.from(table).select('*').order(order, { ascending: false });
   if (error) raise(error);
@@ -57,7 +71,9 @@ async function selectAll<T>(table: string, order = 'created_at') {
 }
 
 export async function loadAppData(): Promise<AppData> {
-  const [products, suppliers, customers, entries, sales, expenses] = await Promise.all([
+  const [currentProfile, profiles, products, suppliers, customers, entries, sales, expenses] = await Promise.all([
+    getCurrentProfile(),
+    selectAll<Profile>('profiles', 'created_at'),
     selectAll<Product>('products', 'name'),
     selectAll<Supplier>('suppliers', 'name'),
     selectAll<Customer>('customers', 'name'),
@@ -66,16 +82,16 @@ export async function loadAppData(): Promise<AppData> {
     selectAll<Expense>('expenses', 'occurred_at'),
   ]);
 
-  return { products, suppliers, customers, entries, sales, expenses };
+  return { currentProfile, profiles, products, suppliers, customers, entries, sales, expenses };
 }
 
 export async function saveProduct(input: ProductInput, id?: string) {
-  const userId = await requireUserId();
+  const ownerId = await requireCompanyOwnerId();
   const name = input.name.trim();
   const { data: existing, error: existingError } = await supabase
     .from('products')
     .select('id')
-    .eq('owner_id', userId)
+    .eq('owner_id', ownerId)
     .ilike('name', name)
     .maybeSingle();
 
@@ -85,7 +101,7 @@ export async function saveProduct(input: ProductInput, id?: string) {
   }
 
   const payload = {
-    owner_id: userId,
+    owner_id: ownerId,
     name,
     category: input.category.trim(),
     price_per_kg: input.price_per_kg,
@@ -110,9 +126,9 @@ export async function saveCustomer(input: ContactInput, id?: string) {
 }
 
 async function saveContact(table: 'suppliers' | 'customers', input: ContactInput, id?: string) {
-  const userId = await requireUserId();
+  const ownerId = await requireCompanyOwnerId();
   const payload = {
-    owner_id: userId,
+    owner_id: ownerId,
     name: input.name.trim(),
     phone: cleanText(input.phone),
     document: cleanText(input.document),
@@ -173,9 +189,9 @@ export async function saveExpense(input: {
   occurred_at: string;
   notes: string;
 }) {
-  const userId = await requireUserId();
+  const ownerId = await requireCompanyOwnerId();
   const { error } = await supabase.from('expenses').insert({
-    owner_id: userId,
+    owner_id: ownerId,
     description: input.description.trim(),
     category: input.category,
     amount: input.amount,
@@ -204,14 +220,14 @@ export async function importBackup(payload: BackupPayload) {
     throw new Error('Arquivo de backup invalido ou versao nao suportada.');
   }
 
-  const userId = await requireUserId();
+  const ownerId = await requireCompanyOwnerId();
   const tables = ['sales', 'stock_entries', 'expenses', 'products', 'suppliers', 'customers'] as const;
   for (const table of tables) {
-    const { error } = await supabase.from(table).delete().eq('owner_id', userId);
+    const { error } = await supabase.from(table).delete().eq('owner_id', ownerId);
     if (error) raise(error);
   }
 
-  const withOwner = <T extends { owner_id: string }>(rows: T[]) => rows.map((row) => ({ ...row, owner_id: userId }));
+  const withOwner = <T extends { owner_id: string }>(rows: T[]) => rows.map((row) => ({ ...row, owner_id: ownerId }));
   const batches = [
     ['suppliers', withOwner(payload.suppliers)] as const,
     ['customers', withOwner(payload.customers)] as const,
@@ -226,4 +242,34 @@ export async function importBackup(payload: BackupPayload) {
     const { error } = await supabase.from(table as string).insert(rows as Record<string, unknown>[]);
     if (error) raise(error);
   }
+}
+
+export async function createUser(input: { email: string; password: string; name: string; role: 'admin' | 'operador' }) {
+  const { error } = await supabase.functions.invoke('create-user', {
+    body: input,
+  });
+  if (error) raise(error);
+}
+
+export async function updateUserRole(userId: string, role: 'admin' | 'operador') {
+  const { error } = await supabase.rpc('admin_update_user_role', {
+    p_user_id: userId,
+    p_role: role,
+  });
+  if (error) raise(error);
+}
+
+export async function deleteStockEntry(id: string) {
+  const { error } = await supabase.rpc('admin_delete_stock_entry', { p_entry_id: id });
+  if (error) raise(error);
+}
+
+export async function deleteSale(id: string) {
+  const { error } = await supabase.rpc('admin_delete_sale', { p_sale_id: id });
+  if (error) raise(error);
+}
+
+export async function deleteExpense(id: string) {
+  const { error } = await supabase.rpc('admin_delete_expense', { p_expense_id: id });
+  if (error) raise(error);
 }

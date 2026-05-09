@@ -6,6 +6,7 @@ import {
   Archive,
   Boxes,
   CircleDollarSign,
+  ShieldCheck,
   Download,
   LayoutDashboard,
   LogOut,
@@ -26,6 +27,10 @@ import { hasSupabaseConfig, supabase } from './lib/supabase';
 import {
   createSale,
   createStockEntry,
+  createUser,
+  deleteExpense,
+  deleteSale,
+  deleteStockEntry,
   exportBackup,
   importBackup,
   loadAppData,
@@ -33,6 +38,7 @@ import {
   saveExpense,
   saveProduct,
   saveSupplier,
+  updateUserRole,
 } from './lib/repository';
 import { formatDateTime, formatKg, formatMoney, fromInputDateTime, todayRange, toInputDateTime } from './lib/format';
 import type { AppData, Customer, ExpenseCategory, Page, Product, Supplier } from './lib/types';
@@ -44,6 +50,8 @@ const emptyData: AppData = {
   entries: [],
   sales: [],
   expenses: [],
+  currentProfile: null,
+  profiles: [],
 };
 
 const expenseLabels: Record<ExpenseCategory, string> = {
@@ -62,6 +70,7 @@ const navItems = [
   { page: 'expenses' as Page, label: 'Despesas', icon: ReceiptText },
   { page: 'suppliers' as Page, label: 'Fornecedores', icon: Truck },
   { page: 'customers' as Page, label: 'Clientes', icon: Users },
+  { page: 'admin' as Page, label: 'Admin', icon: ShieldCheck },
   { page: 'backup' as Page, label: 'Backup', icon: Settings },
 ];
 
@@ -129,6 +138,8 @@ export default function App() {
   }
 
   const CurrentIcon = navItems.find((item) => item.page === page)?.icon || Warehouse;
+  const isAdmin = data.currentProfile?.role === 'admin';
+  const visibleNavItems = navItems.filter((item) => item.page !== 'admin' || isAdmin);
 
   return (
     <div className="shell">
@@ -144,7 +155,7 @@ export default function App() {
         </div>
 
         <nav>
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             return (
               <button
@@ -186,11 +197,12 @@ export default function App() {
 
         {page === 'dashboard' && <Dashboard data={data} />}
         {page === 'products' && <ProductsPage data={data} runAction={runAction} />}
-        {page === 'entries' && <EntriesPage data={data} runAction={runAction} />}
-        {page === 'sales' && <SalesPage data={data} runAction={runAction} />}
-        {page === 'expenses' && <ExpensesPage data={data} runAction={runAction} />}
+        {page === 'entries' && <EntriesPage data={data} runAction={runAction} isAdmin={isAdmin} />}
+        {page === 'sales' && <SalesPage data={data} runAction={runAction} isAdmin={isAdmin} />}
+        {page === 'expenses' && <ExpensesPage data={data} runAction={runAction} isAdmin={isAdmin} />}
         {page === 'suppliers' && <ContactsPage type="suppliers" data={data} runAction={runAction} />}
         {page === 'customers' && <ContactsPage type="customers" data={data} runAction={runAction} />}
+        {page === 'admin' && isAdmin && <AdminPage data={data} runAction={runAction} />}
         {page === 'backup' && <BackupPage runAction={runAction} />}
       </main>
     </div>
@@ -464,7 +476,7 @@ function ProductForm({
   );
 }
 
-function EntriesPage({ data, runAction }: PageProps) {
+function EntriesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean }) {
   const activeProducts = data.products.filter((product) => product.active);
   const [productId, setProductId] = useState('');
   const [supplierId, setSupplierId] = useState('');
@@ -535,13 +547,24 @@ function EntriesPage({ data, runAction }: PageProps) {
         <h2>Historico de entradas</h2>
         <Table
           empty="Nenhuma entrada registrada."
-          headers={['Produto', 'Fornecedor', 'Peso', 'Custo total', 'Data']}
+          headers={isAdmin ? ['Produto', 'Fornecedor', 'Peso', 'Custo total', 'Data', ''] : ['Produto', 'Fornecedor', 'Peso', 'Custo total', 'Data']}
           rows={data.entries.map((entry) => [
             productName(data, entry.product_id),
             supplierName(data, entry.supplier_id),
             formatKg(entry.weight_kg),
             formatMoney(entry.total_cost),
             formatDateTime(entry.occurred_at),
+            ...(isAdmin
+              ? [
+                  <button
+                    className="small-button danger-button"
+                    onClick={() => confirmAction('Apagar esta entrada e ajustar o estoque?', () => runAction('Entrada apagada.', () => deleteStockEntry(entry.id)))}
+                    type="button"
+                  >
+                    Apagar
+                  </button>,
+                ]
+              : []),
           ])}
         />
       </section>
@@ -549,7 +572,7 @@ function EntriesPage({ data, runAction }: PageProps) {
   );
 }
 
-function SalesPage({ data, runAction }: PageProps) {
+function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean }) {
   const activeProducts = data.products.filter((product) => product.active);
   const [productId, setProductId] = useState('');
   const [customerId, setCustomerId] = useState('');
@@ -617,13 +640,24 @@ function SalesPage({ data, runAction }: PageProps) {
         <h2>Historico de vendas</h2>
         <Table
           empty="Nenhuma venda registrada."
-          headers={['Produto', 'Cliente', 'Peso', 'Total', 'Data']}
+          headers={isAdmin ? ['Produto', 'Cliente', 'Peso', 'Total', 'Data', ''] : ['Produto', 'Cliente', 'Peso', 'Total', 'Data']}
           rows={data.sales.map((sale) => [
             productName(data, sale.product_id),
             customerName(data, sale.customer_id),
             formatKg(sale.weight_kg),
             formatMoney(sale.total_price),
             formatDateTime(sale.occurred_at),
+            ...(isAdmin
+              ? [
+                  <button
+                    className="small-button danger-button"
+                    onClick={() => confirmAction('Apagar esta venda e devolver o peso ao estoque?', () => runAction('Venda apagada.', () => deleteSale(sale.id)))}
+                    type="button"
+                  >
+                    Apagar
+                  </button>,
+                ]
+              : []),
           ])}
         />
       </section>
@@ -631,7 +665,7 @@ function SalesPage({ data, runAction }: PageProps) {
   );
 }
 
-function ExpensesPage({ data, runAction }: PageProps) {
+function ExpensesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean }) {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<ExpenseCategory>('almoco');
   const [amount, setAmount] = useState(0);
@@ -690,12 +724,97 @@ function ExpensesPage({ data, runAction }: PageProps) {
         <h2>Historico de despesas</h2>
         <Table
           empty="Nenhuma despesa registrada."
-          headers={['Descricao', 'Categoria', 'Valor', 'Data']}
+          headers={isAdmin ? ['Descricao', 'Categoria', 'Valor', 'Data', ''] : ['Descricao', 'Categoria', 'Valor', 'Data']}
           rows={data.expenses.map((expense) => [
             expense.description,
             expenseLabels[expense.category],
             formatMoney(expense.amount),
             formatDateTime(expense.occurred_at),
+            ...(isAdmin
+              ? [
+                  <button
+                    className="small-button danger-button"
+                    onClick={() => confirmAction('Apagar esta despesa?', () => runAction('Despesa apagada.', () => deleteExpense(expense.id)))}
+                    type="button"
+                  >
+                    Apagar
+                  </button>,
+                ]
+              : []),
+          ])}
+        />
+      </section>
+    </div>
+  );
+}
+
+function AdminPage({ data, runAction }: PageProps) {
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState<'admin' | 'operador'>('operador');
+
+  return (
+    <div className="two-column">
+      <section className="panel">
+        <h2>Criar usuario</h2>
+        <form
+          className="form-grid"
+          onSubmit={(event) => {
+            event.preventDefault();
+            runAction('Usuario criado.', async () => {
+              await createUser({ email, password, name, role });
+              setEmail('');
+              setName('');
+              setPassword('');
+              setRole('operador');
+            });
+          }}
+        >
+          <label>
+            Nome
+            <input value={name} onChange={(event) => setName(event.target.value)} required />
+          </label>
+          <label>
+            Email
+            <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" required />
+          </label>
+          <label>
+            Senha inicial
+            <input minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} type="password" required />
+          </label>
+          <label>
+            Perfil
+            <select value={role} onChange={(event) => setRole(event.target.value as 'admin' | 'operador')}>
+              <option value="operador">Operador</option>
+              <option value="admin">Admin</option>
+            </select>
+          </label>
+          <button className="primary-button" type="submit">
+            <Plus size={18} />
+            Criar usuario
+          </button>
+        </form>
+      </section>
+
+      <section className="panel">
+        <h2>Usuarios da empresa</h2>
+        <Table
+          empty="Nenhum usuario encontrado."
+          headers={['Nome', 'Email', 'Perfil']}
+          rows={data.profiles.map((profile) => [
+            profile.name || '-',
+            profile.email,
+            <select
+              value={profile.role}
+              onChange={(event) =>
+                runAction('Perfil atualizado.', () => updateUserRole(profile.id, event.target.value as 'admin' | 'operador'))
+              }
+              disabled={profile.id === data.currentProfile?.id}
+            >
+              <option value="operador">Operador</option>
+              <option value="admin">Admin</option>
+            </select>,
           ])}
         />
       </section>
@@ -973,6 +1092,10 @@ function filterBy<T>(items: T[], query: string, getText: (item: T) => string) {
 
 function normalizeName(value: string) {
   return value.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function confirmAction(message: string, action: () => void) {
+  if (window.confirm(message)) action();
 }
 
 function getMessage(error: unknown) {

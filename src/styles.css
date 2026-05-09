@@ -335,6 +335,11 @@ textarea:focus {
   padding: 6px 10px;
 }
 
+.danger-button {
+  border-color: #d8aaa0;
+  color: #8a3326;
+}
+
 .icon-button {
   height: 42px;
   width: 42px;
