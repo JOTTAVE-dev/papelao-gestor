@@ -202,17 +202,27 @@ function LoginScreen({ error, onError }: { error: string; onError: (value: strin
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [loading, setLoading] = useState(false);
+  const [authNotice, setAuthNotice] = useState('');
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     setLoading(true);
     onError('');
+    setAuthNotice('');
     const authCall =
       mode === 'login'
         ? supabase.auth.signInWithPassword({ email, password })
         : supabase.auth.signUp({ email, password });
-    const { error: authError } = await authCall;
+    const { data, error: authError } = await authCall;
     if (authError) onError(authError.message);
+    if (!authError && mode === 'signup') {
+      if (data.session) {
+        setAuthNotice('Acesso criado. Entrando no sistema...');
+      } else {
+        setAuthNotice('Acesso criado. Verifique seu email e confirme o cadastro antes de entrar.');
+        setMode('login');
+      }
+    }
     setLoading(false);
   }
 
@@ -239,6 +249,7 @@ function LoginScreen({ error, onError }: { error: string; onError: (value: strin
             <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" required />
           </label>
           {error && <div className="notice danger">{error}</div>}
+          {authNotice && <div className="notice success">{authNotice}</div>}
           <button className="primary-button" disabled={loading} type="submit">
             <LogOut size={18} />
             {loading ? 'Entrando...' : mode === 'login' ? 'Entrar' : 'Criar acesso'}
