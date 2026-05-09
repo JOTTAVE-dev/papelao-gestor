@@ -66,10 +66,10 @@ button {
 }
 
 .login-card {
-  background: #efe7d7;
-  border: 1px solid #ddd0bf;
-  border-radius: 28px;
-  box-shadow: 0 30px 80px rgba(65, 51, 36, 0.14);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   display: grid;
   grid-template-columns: minmax(340px, 0.86fr) minmax(360px, 1fr);
   min-height: min(820px, calc(100vh - 24px));
@@ -81,7 +81,7 @@ button {
 
 .login-left,
 .login-right {
-  background: #f3ebdc;
+  background: transparent;
   min-width: 0;
   padding: clamp(28px, 4vw, 54px);
 }
@@ -925,8 +925,7 @@ code {
     padding: 8px;
   }
 
-  .login-card {
-    border-radius: 18px;
+.login-card {
     width: 100%;
   }
 
