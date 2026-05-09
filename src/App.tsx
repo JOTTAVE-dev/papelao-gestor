@@ -4,7 +4,9 @@ import type { Session } from '@supabase/supabase-js';
 import {
   AlertTriangle,
   Archive,
+  Bell,
   Boxes,
+  CalendarDays,
   CircleDollarSign,
   ShieldCheck,
   Download,
@@ -21,6 +23,7 @@ import {
   Search,
   Settings,
   ShoppingCart,
+  SlidersHorizontal,
   Truck,
   Upload,
   Users,
@@ -190,17 +193,50 @@ export default function App() {
 
       <main className="main">
         <header className="topbar">
+          <div className="topbar-search">
+            <Search size={18} />
+            <input placeholder="Buscar produtos, vendas, entradas ou relatórios..." />
+          </div>
+          <div className="topbar-actions">
+            <div className="time-pill">
+              <CalendarDays size={16} />
+              {new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(new Date())}
+            </div>
+            <button className="icon-button" title="Notificações" type="button">
+              <Bell size={18} />
+            </button>
+            <button className="icon-button" title="Configurações" type="button" onClick={() => setPage('backup')}>
+              <SlidersHorizontal size={18} />
+            </button>
+            <button className="icon-button" onClick={refresh} title="Atualizar dados" type="button">
+              <RefreshCcw size={18} />
+            </button>
+          </div>
+        </header>
+
+        <section className="page-heading">
           <div>
-            <span className="eyebrow">Sistema de controle</span>
+            <span className="eyebrow">RODPEL • Sistema de controle</span>
             <h1>
               <CurrentIcon size={30} />
               {navItems.find((item) => item.page === page)?.label}
             </h1>
           </div>
-          <button className="icon-button" onClick={refresh} title="Atualizar dados" type="button">
-            <RefreshCcw size={18} />
-          </button>
-        </header>
+          <div className="heading-actions">
+            <button className="secondary-button" type="button">
+              <ReceiptText size={17} />
+              Relatório
+            </button>
+            <button className="secondary-button" type="button" onClick={() => setPage('products')}>
+              <Boxes size={17} />
+              Novo produto
+            </button>
+            <button className="primary-button" type="button" onClick={() => setPage('sales')}>
+              <ShoppingCart size={17} />
+              Nova venda
+            </button>
+          </div>
+        </section>
 
         {notice && <div className="notice success">{notice}</div>}
         {error && <div className="notice danger">{error}</div>}
@@ -502,6 +538,18 @@ function Dashboard({ data }: { data: AppData }) {
   const totalSales = salesToday.reduce((sum, sale) => sum + sale.total_price, 0);
   const totalExpenses = expensesToday.reduce((sum, expense) => sum + expense.amount, 0);
   const lowStock = data.products.filter((product) => product.active && product.stock_kg <= product.min_stock_kg);
+  const topProducts = data.products
+    .map((product) => {
+      const productSales = data.sales.filter((sale) => sale.product_id === product.id);
+      return {
+        product,
+        soldKg: productSales.reduce((sum, sale) => sum + sale.weight_kg, 0),
+        total: productSales.reduce((sum, sale) => sum + sale.total_price, 0),
+      };
+    })
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 3);
+  const maxTopTotal = Math.max(...topProducts.map((item) => item.total), 1);
   const recent = [
     ...data.entries.map((entry) => ({ kind: 'Entrada', at: entry.occurred_at, text: `${productName(data, entry.product_id)} +${formatKg(entry.weight_kg)}` })),
     ...data.sales.map((sale) => ({ kind: 'Venda', at: sale.occurred_at, text: `${productName(data, sale.product_id)} -${formatKg(sale.weight_kg)}` })),
@@ -519,7 +567,10 @@ function Dashboard({ data }: { data: AppData }) {
 
       <section className="panel performance-card span-2">
         <div className="panel-title-row">
-          <h2>Performance</h2>
+          <div>
+            <h2>Total de vendas</h2>
+            <strong className="panel-total">{formatMoney(totalSales)}</strong>
+          </div>
           <div className="chart-legend">
             <span><i className="legend-soft" /> Entradas</span>
             <span><i className="legend-strong" /> Vendas</span>
@@ -543,6 +594,35 @@ function Dashboard({ data }: { data: AppData }) {
         </div>
       </section>
 
+      <section className="panel top-products-card">
+        <div className="panel-title-row">
+          <div>
+            <h2>Produtos mais vendidos</h2>
+            <strong className="panel-total">
+              {formatMoney(topProducts.reduce((sum, item) => sum + item.total, 0))}
+            </strong>
+          </div>
+        </div>
+        <div className="product-ranking">
+          {(topProducts.length ? topProducts : data.products.slice(0, 3).map((product) => ({ product, soldKg: 0, total: 0 }))).map((item, index) => (
+            <div className="ranking-item" key={item.product.id}>
+              <div className="ranking-head">
+                <div>
+                  <strong>{item.product.name}</strong>
+                  <span>{formatKg(item.soldKg)} vendidos</span>
+                </div>
+                <b>{Math.round((item.total / maxTopTotal) * 100)}%</b>
+              </div>
+              <div className={`ranking-bars ranking-${index + 1}`}>
+                <span style={{ width: `${Math.max((item.total / maxTopTotal) * 100, 12)}%` }} />
+                <span style={{ width: `${Math.max((item.total / maxTopTotal) * 72, 10)}%` }} />
+                <span style={{ width: `${Math.max((item.total / maxTopTotal) * 48, 8)}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section className="panel span-2">
         <h2>Alertas de estoque</h2>
         <Table
@@ -557,8 +637,11 @@ function Dashboard({ data }: { data: AppData }) {
         />
       </section>
 
-      <section className="panel span-2">
-        <h2>Ultimas movimentacoes</h2>
+      <section className="panel recent-orders span-2">
+        <div className="panel-title-row">
+          <h2>Movimentações recentes</h2>
+          <button className="link-button" type="button">Ver tudo</button>
+        </div>
         <Table
           empty="Nenhuma movimentacao registrada."
           headers={['Tipo', 'Descricao', 'Data']}

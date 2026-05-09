@@ -1066,6 +1066,350 @@ tr:hover td {
   max-width: 460px;
 }
 
+/* Clean FlowStock-inspired RODPEL app shell */
+.shell {
+  background: #f6f8f7;
+  gap: 0;
+  grid-template-columns: 280px minmax(0, 1fr);
+  padding: 0;
+}
+
+.shell::before {
+  display: none;
+}
+
+.sidebar {
+  background: #ffffff;
+  border: 0;
+  border-radius: 0;
+  border-right: 1px solid #e8eeeb;
+  box-shadow: none;
+  min-height: 100vh;
+  padding: 26px 18px;
+}
+
+.shell .brand {
+  border-bottom: 0;
+  margin-bottom: 12px;
+  padding: 0 8px 18px;
+}
+
+.shell .brand-mark {
+  background: linear-gradient(135deg, #1d6bff, #143a38);
+  border-radius: 12px;
+  box-shadow: 0 12px 24px rgba(29, 107, 255, 0.18);
+}
+
+.shell .brand-mark::after {
+  content: "R";
+  font-size: 1rem;
+}
+
+.shell .brand strong::after {
+  content: "ROD";
+  color: #1a2020;
+  font-size: 1.08rem;
+  letter-spacing: 0;
+}
+
+.shell .brand strong::before {
+  color: #1d6bff;
+  content: "PEL";
+  float: right;
+  font-size: 1.08rem;
+  margin-left: 0;
+  transform: translateX(34px);
+}
+
+.shell .brand span::after {
+  content: "FlowStock de papelao";
+  color: #7f8b86;
+}
+
+.nav-button,
+.exit {
+  border-radius: 13px;
+  color: #68746f;
+  font-weight: 760;
+  min-height: 44px;
+}
+
+.nav-button:hover,
+.nav-button.active {
+  background: #eaf3ff;
+  border-color: #eaf3ff;
+  color: #172020;
+}
+
+.nav-button.active svg,
+.nav-button:hover svg {
+  color: #172020;
+}
+
+.sidebar-profile {
+  background: #fbfcfc;
+  border-color: #e8eeeb;
+  border-radius: 16px;
+}
+
+.profile-avatar {
+  background: #143a38;
+}
+
+.main {
+  background: #f6f8f7;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 100vh;
+  overflow: visible;
+  padding: 24px 28px 34px;
+}
+
+.topbar {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 26px;
+}
+
+.topbar-search {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e4ebe8;
+  border-radius: 16px;
+  color: #8b9692;
+  display: flex;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 15px;
+  width: min(520px, 100%);
+}
+
+.topbar-search input {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  min-height: 44px;
+  padding: 0;
+}
+
+.topbar-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.time-pill {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e4ebe8;
+  border-radius: 14px;
+  color: #26302d;
+  display: inline-flex;
+  font-size: 0.88rem;
+  font-weight: 800;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 13px;
+  white-space: nowrap;
+}
+
+.time-pill svg {
+  color: #1d6bff;
+}
+
+.page-heading {
+  align-items: center;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+
+.page-heading h1 {
+  color: #121a18;
+  font-size: clamp(2rem, 3vw, 2.8rem);
+  font-weight: 900;
+}
+
+.page-heading h1 svg {
+  color: #143a38;
+}
+
+.heading-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.heading-actions .primary-button,
+.heading-actions .secondary-button {
+  border-radius: 14px;
+  min-height: 44px;
+}
+
+.heading-actions .primary-button {
+  background: #1d6bff;
+  border-color: #1d6bff;
+}
+
+.content-grid {
+  gap: 18px;
+}
+
+.panel,
+.metric {
+  background: #ffffff;
+  border: 1px solid #e4ebe8;
+  border-radius: 20px;
+  box-shadow: 0 14px 34px rgba(23, 32, 30, 0.05);
+}
+
+.metric {
+  min-height: 142px;
+}
+
+.metric::after {
+  background: #eef6ff;
+}
+
+.metric svg {
+  background: #f2f7f5;
+  color: #143a38;
+}
+
+.metric strong {
+  color: #121a18;
+}
+
+.panel-total {
+  color: #121a18;
+  display: block;
+  font-size: 1.9rem;
+  margin-top: 6px;
+}
+
+.performance-card {
+  grid-column: span 2;
+}
+
+.top-products-card {
+  grid-column: span 2;
+}
+
+.bar-chart {
+  background:
+    repeating-linear-gradient(0deg, transparent 0 36px, rgba(29, 107, 255, 0.07) 36px 37px),
+    #ffffff;
+  min-height: 300px;
+}
+
+.bars span:nth-child(1) {
+  background: #93c5fd;
+}
+
+.bars span:nth-child(2) {
+  background: #1d6bff;
+}
+
+.bars span:nth-child(3) {
+  background: #e7ecea;
+}
+
+.legend-soft {
+  background: #93c5fd;
+}
+
+.legend-strong {
+  background: #1d6bff;
+}
+
+.product-ranking {
+  display: grid;
+  gap: 22px;
+}
+
+.ranking-item {
+  display: grid;
+  gap: 10px;
+}
+
+.ranking-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.ranking-head strong,
+.ranking-head span {
+  display: block;
+}
+
+.ranking-head strong {
+  color: #121a18;
+  font-size: 0.94rem;
+}
+
+.ranking-head span {
+  color: #7d8984;
+  font-size: 0.78rem;
+}
+
+.ranking-head b {
+  color: #121a18;
+  font-size: 0.92rem;
+}
+
+.ranking-bars {
+  display: grid;
+  gap: 6px;
+}
+
+.ranking-bars span {
+  border-radius: 999px;
+  display: block;
+  height: 8px;
+  min-width: 28px;
+}
+
+.ranking-1 span {
+  background: #1d6bff;
+}
+
+.ranking-2 span {
+  background: #e8c547;
+}
+
+.ranking-3 span {
+  background: #3eae71;
+}
+
+.recent-orders table,
+.panel table {
+  border-collapse: separate;
+  border-spacing: 0 8px;
+}
+
+.recent-orders td,
+.panel td {
+  background: #fbfcfc;
+  border-bottom: 0;
+}
+
+.recent-orders tbody tr td:first-child,
+.panel tbody tr td:first-child {
+  border-radius: 12px 0 0 12px;
+}
+
+.recent-orders tbody tr td:last-child,
+.panel tbody tr td:last-child {
+  border-radius: 0 12px 12px 0;
+}
+
 .panel-title-row {
   align-items: center;
   display: flex;
