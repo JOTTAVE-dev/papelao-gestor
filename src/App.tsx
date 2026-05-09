@@ -288,6 +288,7 @@ function LoginScreen({ error, onError }: { error: string; onError: (value: strin
 }
 
 function PremiumLoginScreen({ error, onError }: { error: string; onError: (value: string) => void }) {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -303,7 +304,7 @@ function PremiumLoginScreen({ error, onError }: { error: string; onError: (value
     const authCall =
       mode === 'login'
         ? supabase.auth.signInWithPassword({ email, password })
-        : supabase.auth.signUp({ email, password });
+        : supabase.auth.signUp({ email, password, options: { data: { name } } });
     const { data, error: authError } = await authCall;
     if (authError) onError(authError.message);
     if (!authError && mode === 'signup') {
@@ -323,39 +324,38 @@ function PremiumLoginScreen({ error, onError }: { error: string; onError: (value
         <div className="login-left">
           <div className="brand login-brand">
             <div className="brand-mark">
-              <Warehouse size={26} />
+              R
             </div>
             <div>
-              <strong>Papelão Gestor</strong>
-              <span>Distribuidora de papelão</span>
+              <strong>RODPEL</strong>
+              <span>Gestão de papelão</span>
             </div>
           </div>
 
           <div className="login-copy">
-            <h1>{mode === 'login' ? 'Entrar' : 'Criar acesso'}</h1>
+            <h1>{mode === 'login' ? 'Entrar no sistema' : 'Criar uma conta'}</h1>
             <p>
               {mode === 'login'
                 ? 'Bem-vindo de volta. Acesse estoque, vendas, entradas e despesas.'
-                : 'Crie o primeiro acesso para administrar sua distribuidora.'}
+                : 'Cadastre seu acesso para controlar a operação da RODPEL.'}
             </p>
           </div>
 
-          <div className="role-options" aria-label="Tipo de acesso">
-            <span className="role-option active">
-              <span />
-              Administrador
-            </span>
-            <span className="role-option">
-              <span />
-              Equipe
-            </span>
-          </div>
-
-          <div className="login-divider">
-            <span>Acesso seguro</span>
-          </div>
-
           <form onSubmit={submit} className="form-stack refined-login-form">
+            {mode === 'signup' && (
+              <label>
+                Nome
+                <div className="field-shell">
+                  <Users size={18} />
+                  <input
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="Digite seu nome"
+                    required
+                  />
+                </div>
+              </label>
+            )}
             <label>
               Email *
               <div className="field-shell">
@@ -400,6 +400,19 @@ function PremiumLoginScreen({ error, onError }: { error: string; onError: (value
             <button className="login-submit" disabled={loading} type="submit">
               {loading ? 'Entrando...' : mode === 'login' ? 'Entrar' : 'Criar acesso'}
             </button>
+            <div className="login-divider">
+              <span>Ou</span>
+            </div>
+            <div className="social-row">
+              <button type="button" className="social-button">
+                <span className="google-mark">G</span>
+                Google
+              </button>
+              <button type="button" className="social-button">
+                <span className="facebook-mark">f</span>
+                Facebook
+              </button>
+            </div>
             <p className="signup-line">
               {mode === 'login' ? 'Ainda nao tem acesso?' : 'Ja possui acesso?'}
               <button className="inline-link" onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} type="button">
@@ -410,31 +423,48 @@ function PremiumLoginScreen({ error, onError }: { error: string; onError: (value
         </div>
 
         <div className="login-right">
-          <div className="quote-block">
-            <span className="quote-mark">“</span>
-            <p>
-              O Papelão Gestor centraliza entradas, vendas, estoque e despesas em uma rotina simples. A equipe acompanha
-              o peso de cada mercadoria, evita vendas sem estoque e enxerga o resultado do dia com rapidez.
-            </p>
-            <span className="quote-mark end">”</span>
+          <div className="tech-squares" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+            <span />
+            <span />
           </div>
 
-          <div className="testimonial">
-            <div className="avatar">PG</div>
-            <div>
-              <strong>Gestor da distribuidora</strong>
-              <span>Controle operacional</span>
+          <div className="analytics-card">
+            <div className="analytics-head">
+              <strong>Analytics</strong>
+              <div>
+                <span>Semanal</span>
+                <span>Mensal</span>
+                <span>Anual</span>
+              </div>
+            </div>
+            <div className="line-chart">
+              <svg viewBox="0 0 360 160" role="img" aria-label="Gráfico de controle de estoque">
+                <path d="M24 118 C82 74 112 104 160 68 S250 42 336 82" />
+                <path d="M24 92 C74 102 116 44 166 88 S260 118 336 44" />
+              </svg>
+              <div className="chart-days">
+                <span>SEG</span>
+                <span>TER</span>
+                <span>QUA</span>
+                <span>QUI</span>
+              </div>
             </div>
           </div>
 
-          <div className="warehouse-art" aria-hidden="true">
-            <div className="building building-one" />
-            <div className="building building-two" />
-            <div className="building building-three" />
-            <div className="paper-stack stack-one" />
-            <div className="paper-stack stack-two" />
-            <div className="tree tree-one" />
-            <div className="tree tree-two" />
+          <div className="donut-card">
+            <div className="donut-chart">
+              <span>Total<br />42%</span>
+            </div>
+          </div>
+
+          <div className="right-copy">
+            <h2>Gestão simples para a RODPEL</h2>
+            <p>
+              Controle entradas, vendas, estoque e despesas da distribuidora de papelão com clareza, rapidez e segurança.
+            </p>
           </div>
         </div>
       </section>
