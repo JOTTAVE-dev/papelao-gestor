@@ -64,6 +64,17 @@ import {
 import { formatDateTime, formatKg, formatMoney, fromInputDateTime, todayRange, toInputDateTime } from './lib/format';
 import type { AppData, Customer, Expense, ExpenseCategory, Page, Product, Sale, StockEntry, Supplier } from './lib/types';
 
+type ToastVariant = 'success' | 'info' | 'warning' | 'error';
+
+type AppToast = {
+  id: number;
+  variant: ToastVariant;
+  title: string;
+  description?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+};
+
 const emptyData: AppData = {
   companies: [],
   products: [],
@@ -146,6 +157,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [toasts, setToasts] = useState<AppToast[]>([]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: authData }) => {
@@ -177,6 +189,15 @@ export default function App() {
     refresh();
   }, [session]);
 
+  function showToast(toast: Omit<AppToast, 'id'>) {
+    const nextToast = { ...toast, id: Date.now() + Math.floor(Math.random() * 1000) };
+    setToasts((current) => [...current, nextToast]);
+  }
+
+  function dismissToast(id: number) {
+    setToasts((current) => current.filter((toast) => toast.id !== id));
+  }
+
   async function runAction(successMessage: string, action: () => Promise<void>) {
     setError('');
     setNotice('');
@@ -188,6 +209,18 @@ export default function App() {
       setError(getMessage(err));
     }
   }
+
+  useEffect(() => {
+    if (!notice) return;
+    showToast({ variant: 'success', title: notice });
+    setNotice('');
+  }, [notice]);
+
+  useEffect(() => {
+    if (!error || !session) return;
+    showToast({ variant: 'error', title: 'Operacao nao concluida', description: error });
+    setError('');
+  }, [error, session]);
 
   if (!hasSupabaseConfig) {
     return <MissingConfig />;
@@ -225,6 +258,17 @@ export default function App() {
         }
       : data;
   const visibleNavItems = navItems.filter((item) => item.page !== 'admin' || canOpenAdmin);
+
+  useEffect(() => {
+    if (!supportRequired) return;
+    showToast({
+      variant: 'warning',
+      title: 'Selecione uma empresa para suporte',
+      description: 'Escolha a empresa na tela Admin para evitar dados misturados.',
+      actionLabel: 'Abrir Admin',
+      onAction: () => setPage('admin'),
+    });
+  }, [supportRequired]);
 
   return (
     <div className={sidebarExpanded ? 'shell sidebar-expanded' : 'shell sidebar-collapsed'}>
@@ -308,7 +352,19 @@ export default function App() {
             <button className="icon-button" title="Configurações" type="button" onClick={() => setPage('backup')}>
               <SlidersHorizontal size={18} />
             </button>
-            <button className="icon-button" onClick={refresh} title="Atualizar dados" type="button">
+            <button
+              className="icon-button"
+              onClick={() => {
+                showToast({
+                  variant: 'info',
+                  title: 'Atualizando dados',
+                  description: 'Buscando as informacoes mais recentes.',
+                });
+                refresh();
+              }}
+              title="Atualizar dados"
+              type="button"
+            >
               <RefreshCcw size={18} />
             </button>
           </div>
@@ -339,13 +395,6 @@ export default function App() {
           </div>
         </section>
 
-        {notice && <div className="notice success">{notice}</div>}
-        {error && <div className="notice danger">{error}</div>}
-        {loading && <div className="notice neutral">Atualizando dados...</div>}
-        {isSuperAdmin && !supportOwnerId && page !== 'admin' && (
-          <div className="notice neutral">Selecione uma empresa na tela Admin para entrar em modo de suporte e evitar ver dados misturados.</div>
-        )}
-
         {supportRequired ? (
           <section className="panel">
             <h2>Escolha uma empresa para suporte</h2>
@@ -366,6 +415,7 @@ export default function App() {
         )}
         {page === 'backup' && <BackupPage runAction={runAction} />}
       </main>
+      <ToastViewport toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }
@@ -2830,6 +2880,61 @@ function validateVoiceCommand(command: ParsedVoiceCommand, data: AppData) {
   }
   if (command.intent === 'saida') messages.push('Saída sem cliente ainda não salva automaticamente; converta para venda ou lance manualmente.');
   return messages;
+}
+
+function ToastViewport({ toasts, onDismiss }: { toasts: AppToast[]; onDismiss: (id: number) => void }) {
+  return (
+    <div className="toast-viewport" aria-live="polite" aria-atomic="true">
+      {toasts.map((toast) => (
+        <ToastCard key={toast.id} toast={toast} onDismiss={onDismiss} />
+      ))}
+    </div>
+  );
+}
+
+function ToastCard({ toast, onDismiss }: { toast: AppToast; onDismiss: (id: number) => void }) {
+  useEffect(() => {
+    const timeout = window.setTimeout(() => onDismiss(toast.id), toast.variant === 'error' ? 6500 : 4200);
+    return () => window.clearTimeout(timeout);
+  }, [onDismiss, toast.id, toast.variant]);
+
+  const action = toast.onAction;
+
+  const icon =
+    toast.variant === 'success' ? (
+      <Check size={16} />
+    ) : toast.variant === 'warning' ? (
+      <AlertTriangle size={16} />
+    ) : toast.variant === 'error' ? (
+      <AlertTriangle size={16} />
+    ) : (
+      <Bell size={16} />
+    );
+
+  return (
+    <div className={`toast-card ${toast.variant}`} role="status">
+      <div className={`toast-icon ${toast.variant}`}>{icon}</div>
+      <div className="toast-body">
+        <strong>{toast.title}</strong>
+        {toast.description && <span>{toast.description}</span>}
+        {toast.actionLabel && action && (
+          <button
+            className="toast-action"
+            onClick={() => {
+              action();
+              onDismiss(toast.id);
+            }}
+            type="button"
+          >
+            {toast.actionLabel}
+          </button>
+        )}
+      </div>
+      <button className="toast-close" onClick={() => onDismiss(toast.id)} type="button" aria-label="Fechar aviso">
+        <X size={14} />
+      </button>
+    </div>
+  );
 }
 
 function confirmAction(message: string, action: () => void) {

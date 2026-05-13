@@ -1207,6 +1207,121 @@ tr:hover td {
   color: #35577a;
 }
 
+.toast-viewport {
+  display: grid;
+  gap: 12px;
+  pointer-events: none;
+  position: fixed;
+  right: 22px;
+  top: 22px;
+  width: min(360px, calc(100vw - 28px));
+  z-index: 60;
+}
+
+.toast-card {
+  align-items: flex-start;
+  animation: toast-enter 220ms ease;
+  backdrop-filter: blur(18px);
+  background: rgba(10, 13, 18, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  color: #f5f7fa;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 14px;
+  pointer-events: auto;
+}
+
+.toast-icon {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  display: inline-flex;
+  height: 34px;
+  justify-content: center;
+  width: 34px;
+}
+
+.toast-icon.success {
+  color: #5ae0a0;
+}
+
+.toast-icon.info {
+  color: #7cc4ff;
+}
+
+.toast-icon.warning {
+  color: #ffcf66;
+}
+
+.toast-icon.error {
+  color: #ff8b86;
+}
+
+.toast-body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.toast-body strong {
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.toast-body span {
+  color: rgba(229, 233, 240, 0.78);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.toast-action,
+.toast-close {
+  background: transparent;
+  border: 0;
+}
+
+.toast-action {
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  justify-self: flex-start;
+  padding: 0;
+}
+
+.toast-action:hover {
+  color: #9ec5ff;
+}
+
+.toast-close {
+  align-items: center;
+  border-radius: 10px;
+  color: rgba(229, 233, 240, 0.72);
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  width: 28px;
+}
+
+.toast-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -8px, 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
 .backup-panel {
   max-width: 780px;
 }
