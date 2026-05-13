@@ -70,7 +70,16 @@ export type Expense = {
   created_at: string;
 };
 
-export type UserRole = 'admin' | 'operador';
+export type UserRole = 'super_admin' | 'owner' | 'operator';
+
+export type Company = {
+  id: string;
+  name: string;
+  owner_id: string | null;
+  user_limit: number;
+  created_at: string;
+  updated_at: string;
+};
 
 export type Profile = {
   id: string;
@@ -78,6 +87,7 @@ export type Profile = {
   name: string | null;
   role: UserRole;
   company_owner_id: string;
+  company_id: string | null;
   created_at: string;
 };
 
@@ -94,6 +104,7 @@ export type BackupPayload = {
 
 export type AppData = {
   currentProfile: Profile | null;
+  companies: Company[];
   profiles: Profile[];
   products: Product[];
   suppliers: Supplier[];

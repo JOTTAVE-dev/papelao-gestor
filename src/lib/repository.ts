@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import type {
   AppData,
   BackupPayload,
+  Company,
   Customer,
   Expense,
   ExpenseCategory,
@@ -84,7 +85,8 @@ async function selectAll<T>(table: string, order = 'created_at') {
 
 export async function loadAppData(): Promise<AppData> {
   const profileResult = await getCurrentProfile();
-  const [profiles, products, suppliers, customers, entries, sales, expenses] = await Promise.all([
+  const [companies, profiles, products, suppliers, customers, entries, sales, expenses] = await Promise.all([
+    selectAll<Company>('companies', 'name').catch(() => []),
     selectAll<Profile>('profiles', 'created_at').catch(() => []),
     selectAll<Product>('products', 'name'),
     selectAll<Supplier>('suppliers', 'name'),
@@ -94,7 +96,7 @@ export async function loadAppData(): Promise<AppData> {
     selectAll<Expense>('expenses', 'occurred_at'),
   ]);
 
-  return { currentProfile: profileResult, profiles, products, suppliers, customers, entries, sales, expenses };
+  return { currentProfile: profileResult, companies, profiles, products, suppliers, customers, entries, sales, expenses };
 }
 
 function normalizeProductName(value: string) {
@@ -300,17 +302,33 @@ export async function importBackup(payload: BackupPayload) {
   }
 }
 
-export async function createUser(input: { email: string; password: string; name: string; role: 'admin' | 'operador' }) {
+export async function createUser(input: {
+  email: string;
+  password: string;
+  name: string;
+  role: 'owner' | 'operator';
+  companyName?: string;
+  companyId?: string;
+  userLimit?: number;
+}) {
   const { error } = await supabase.functions.invoke('create-user', {
     body: input,
   });
   if (error) raise(error);
 }
 
-export async function updateUserRole(userId: string, role: 'admin' | 'operador') {
+export async function updateUserRole(userId: string, role: 'owner' | 'operator') {
   const { error } = await supabase.rpc('admin_update_user_role', {
     p_user_id: userId,
     p_role: role,
+  });
+  if (error) raise(error);
+}
+
+export async function updateCompanyLimit(companyId: string, userLimit: number) {
+  const { error } = await supabase.rpc('super_admin_update_company_limit', {
+    p_company_id: companyId,
+    p_user_limit: userLimit,
   });
   if (error) raise(error);
 }

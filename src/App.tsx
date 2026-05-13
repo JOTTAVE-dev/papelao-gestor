@@ -50,12 +50,14 @@ import {
   saveExpense,
   saveProduct,
   saveSupplier,
+  updateCompanyLimit,
   updateUserRole,
 } from './lib/repository';
 import { formatDateTime, formatKg, formatMoney, fromInputDateTime, todayRange, toInputDateTime } from './lib/format';
 import type { AppData, Customer, ExpenseCategory, Page, Product, Supplier } from './lib/types';
 
 const emptyData: AppData = {
+  companies: [],
   products: [],
   suppliers: [],
   customers: [],
@@ -190,8 +192,8 @@ export default function App() {
   }
 
   const CurrentIcon = navItems.find((item) => item.page === page)?.icon || Warehouse;
-  const isAdmin = data.currentProfile?.role === 'admin';
-  const visibleNavItems = navItems.filter((item) => item.page !== 'admin' || isAdmin);
+  const isSuperAdmin = data.currentProfile?.role === 'super_admin';
+  const visibleNavItems = navItems.filter((item) => item.page !== 'admin' || isSuperAdmin);
 
   return (
     <div className="shell">
@@ -289,14 +291,14 @@ export default function App() {
         {loading && <div className="notice neutral">Atualizando dados...</div>}
 
         {page === 'dashboard' && <Dashboard data={data} />}
-        {page === 'products' && <ProductsPage data={data} runAction={runAction} isAdmin={isAdmin} />}
-        {page === 'entries' && <EntriesPage data={data} runAction={runAction} isAdmin={isAdmin} />}
-        {page === 'sales' && <SalesPage data={data} runAction={runAction} isAdmin={isAdmin} />}
+        {page === 'products' && <ProductsPage data={data} runAction={runAction} isAdmin={isSuperAdmin} />}
+        {page === 'entries' && <EntriesPage data={data} runAction={runAction} isAdmin={isSuperAdmin} />}
+        {page === 'sales' && <SalesPage data={data} runAction={runAction} isAdmin={isSuperAdmin} />}
         {page === 'voice' && <VoicePage data={data} runAction={runAction} />}
-        {page === 'expenses' && <ExpensesPage data={data} runAction={runAction} isAdmin={isAdmin} />}
+        {page === 'expenses' && <ExpensesPage data={data} runAction={runAction} isAdmin={isSuperAdmin} />}
         {page === 'suppliers' && <ContactsPage type="suppliers" data={data} runAction={runAction} />}
         {page === 'customers' && <ContactsPage type="customers" data={data} runAction={runAction} />}
-        {page === 'admin' && isAdmin && <AdminPage data={data} runAction={runAction} />}
+        {page === 'admin' && isSuperAdmin && <AdminPage data={data} runAction={runAction} />}
         {page === 'backup' && <BackupPage runAction={runAction} />}
       </main>
     </div>
@@ -372,9 +374,9 @@ function LoginScreen({ error, onError }: { error: string; onError: (value: strin
 
 function PremiumLoginScreen({ error, onError }: { error: string; onError: (value: string) => void }) {
   const [name, setName] = useState('');
+  const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [loading, setLoading] = useState(false);
   const [authNotice, setAuthNotice] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -384,20 +386,8 @@ function PremiumLoginScreen({ error, onError }: { error: string; onError: (value
     setLoading(true);
     onError('');
     setAuthNotice('');
-    const authCall =
-      mode === 'login'
-        ? supabase.auth.signInWithPassword({ email, password })
-        : supabase.auth.signUp({ email, password, options: { data: { name } } });
-    const { data, error: authError } = await authCall;
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
     if (authError) onError(authError.message);
-    if (!authError && mode === 'signup') {
-      if (data.session) {
-        setAuthNotice('Acesso criado. Entrando no sistema...');
-      } else {
-        setAuthNotice('Acesso criado. Verifique seu email e confirme o cadastro antes de entrar.');
-        setMode('login');
-      }
-    }
     setLoading(false);
   }
 
@@ -416,7 +406,7 @@ function PremiumLoginScreen({ error, onError }: { error: string; onError: (value
           </div>
 
           <div className="login-copy">
-            <h1>{mode === 'login' ? 'Entrar no sistema' : 'Criar uma conta'}</h1>
+            <h1>Entrar no sistema</h1>
             <p>
               {mode === 'login'
                 ? 'Bem-vindo de volta. Acesse estoque, vendas, entradas e despesas.'
@@ -511,8 +501,8 @@ function PremiumLoginScreen({ error, onError }: { error: string; onError: (value
               </button>
             </div>
             <p className="signup-line">
-              {mode === 'login' ? 'Ainda nao tem acesso?' : 'Ja possui acesso?'}
-              <button className="inline-link" onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} type="button">
+              Novos acessos sao criados pelo admin geral ou pelo proprietario da empresa.
+              <button className="inline-link" hidden onClick={() => setMode(mode === 'login' ? 'signup' : 'login')} type="button">
                 {mode === 'login' ? 'Criar primeiro acesso' : 'Entrar'}
               </button>
             </p>
@@ -1363,25 +1353,82 @@ function AdminPage({ data, runAction }: PageProps) {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'admin' | 'operador'>('operador');
+  const [role, setRole] = useState<'owner' | 'operator'>('owner');
+  const [companyName, setCompanyName] = useState('');
+  const [companyId, setCompanyId] = useState('');
+  const [userLimit, setUserLimit] = useState(3);
+  const selectableCompanies = data.companies.filter((company) => Boolean(company.owner_id));
+  const owners = data.profiles.filter((profile) => profile.role === 'owner');
+  const operators = data.profiles.filter((profile) => profile.role === 'operator');
+  const companyOwner = (ownerId: string | null) => owners.find((profile) => profile.id === ownerId);
+  const companyUsers = (id: string) => operators.filter((profile) => profile.company_id === id);
 
   return (
-    <div className="two-column">
+    <div className="admin-layout">
+      <div className="content-grid">
+        <Metric icon={ShieldCheck} label="Empresas" value={String(data.companies.length)} />
+        <Metric icon={Users} label="Proprietarios" value={String(owners.length)} />
+        <Metric icon={Mail} label="Subusuarios" value={String(operators.length)} />
+        <Metric icon={SlidersHorizontal} label="Limite total" value={String(data.companies.reduce((sum, company) => sum + company.user_limit, 0))} />
+      </div>
+
       <section className="panel">
-        <h2>Criar usuario</h2>
+        <h2>Criar proprietario ou subusuario</h2>
         <form
           className="form-grid"
           onSubmit={(event) => {
             event.preventDefault();
             runAction('Usuario criado.', async () => {
-              await createUser({ email, password, name, role });
+              await createUser({
+                email,
+                password,
+                name,
+                role,
+                companyName,
+                companyId,
+                userLimit,
+              });
               setEmail('');
               setName('');
               setPassword('');
-              setRole('operador');
+              setCompanyName('');
+              setCompanyId('');
+              setRole('owner');
             });
           }}
         >
+          <label>
+            Tipo de acesso
+            <select value={role} onChange={(event) => setRole(event.target.value as 'owner' | 'operator')}>
+              <option value="owner">Proprietario</option>
+              <option value="operator">Subusuario</option>
+            </select>
+          </label>
+          {role === 'owner' && (
+            <>
+              <label>
+                Empresa
+                <input value={companyName} onChange={(event) => setCompanyName(event.target.value)} required />
+              </label>
+              <label>
+                Limite de subusuarios
+                <input min="0" value={userLimit} onChange={(event) => setUserLimit(Number(event.target.value))} type="number" required />
+              </label>
+            </>
+          )}
+          {role === 'operator' && (
+            <label>
+              Empresa
+              <select value={companyId} onChange={(event) => setCompanyId(event.target.value)} required>
+                <option value="">Selecione</option>
+                {selectableCompanies.map((company) => (
+                  <option key={company.id} value={company.id}>
+                    {company.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label>
             Nome
             <input value={name} onChange={(event) => setName(event.target.value)} required />
@@ -1394,37 +1441,58 @@ function AdminPage({ data, runAction }: PageProps) {
             Senha inicial
             <input minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} type="password" required />
           </label>
-          <label>
-            Perfil
-            <select value={role} onChange={(event) => setRole(event.target.value as 'admin' | 'operador')}>
-              <option value="operador">Operador</option>
-              <option value="admin">Admin</option>
-            </select>
-          </label>
           <button className="primary-button" type="submit">
             <Plus size={18} />
-            Criar usuario
+            Criar acesso
           </button>
         </form>
       </section>
 
       <section className="panel">
-        <h2>Usuarios da empresa</h2>
+        <h2>Empresas, proprietarios e limites</h2>
+        <Table
+          empty="Nenhuma empresa cadastrada."
+          headers={['Empresa', 'Proprietario', 'Email', 'Subusuarios', 'Limite']}
+          rows={data.companies.map((company) => {
+            const owner = companyOwner(company.owner_id);
+            const used = companyUsers(company.id).length;
+            return [
+              <strong>{company.name}</strong>,
+              owner?.name || '-',
+              owner?.email || '-',
+              `${used}/${company.user_limit}`,
+              <input
+                min="0"
+                value={company.user_limit}
+                onChange={(event) =>
+                  runAction('Limite atualizado.', () => updateCompanyLimit(company.id, Number(event.target.value)))
+                }
+                type="number"
+              />,
+            ];
+          })}
+        />
+      </section>
+
+      <section className="panel">
+        <h2>Usuarios criados</h2>
         <Table
           empty="Nenhum usuario encontrado."
-          headers={['Nome', 'Email', 'Perfil']}
+          headers={['Nome', 'Email', 'Empresa', 'Perfil']}
           rows={data.profiles.map((profile) => [
             profile.name || '-',
             profile.email,
+            data.companies.find((company) => company.id === profile.company_id)?.name || '-',
             <select
               value={profile.role}
               onChange={(event) =>
-                runAction('Perfil atualizado.', () => updateUserRole(profile.id, event.target.value as 'admin' | 'operador'))
+                runAction('Perfil atualizado.', () => updateUserRole(profile.id, event.target.value as 'owner' | 'operator'))
               }
-              disabled={profile.id === data.currentProfile?.id}
+              disabled={profile.id === data.currentProfile?.id || profile.role === 'super_admin'}
             >
-              <option value="operador">Operador</option>
-              <option value="admin">Admin</option>
+              {profile.role === 'super_admin' && <option value="super_admin">Admin geral</option>}
+              <option value="operator">Subusuario</option>
+              <option value="owner">Proprietario</option>
             </select>,
           ])}
         />
