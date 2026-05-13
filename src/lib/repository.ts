@@ -219,6 +219,31 @@ export async function createStockEntry(input: {
   if (error) raise(error);
 }
 
+export async function updateStockEntry(
+  id: string,
+  input: {
+    product_id: string;
+    supplier_id: string;
+    weight_kg: number;
+    unit_cost: number;
+    total_cost: number;
+    occurred_at: string;
+    notes: string;
+  },
+) {
+  const { error } = await supabase.rpc('admin_update_stock_entry', {
+    p_entry_id: id,
+    p_product_id: input.product_id,
+    p_supplier_id: input.supplier_id,
+    p_weight_kg: input.weight_kg,
+    p_unit_cost: input.unit_cost,
+    p_total_cost: input.total_cost,
+    p_occurred_at: input.occurred_at,
+    p_notes: cleanText(input.notes),
+  });
+  if (error) raise(error);
+}
+
 export async function createSale(input: {
   product_id: string;
   customer_id: string;

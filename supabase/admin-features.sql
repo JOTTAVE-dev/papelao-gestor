@@ -420,6 +420,96 @@ begin
 end;
 $$;
 
+create or replace function public.admin_update_stock_entry(
+  p_entry_id uuid,
+  p_product_id uuid,
+  p_supplier_id uuid,
+  p_weight_kg numeric,
+  p_unit_cost numeric,
+  p_total_cost numeric,
+  p_occurred_at timestamptz,
+  p_notes text
+) returns void
+language plpgsql
+as $$
+declare
+  v_entry public.stock_entries%rowtype;
+  v_old_stock numeric;
+begin
+  if p_weight_kg <= 0 then
+    raise exception 'Peso da entrada deve ser maior que zero.';
+  end if;
+
+  select * into v_entry
+    from public.stock_entries
+   where id = p_entry_id
+     and public.can_manage_owner_records(owner_id)
+   for update;
+
+  if v_entry.id is null then
+    raise exception 'Entrada nao encontrada.';
+  end if;
+
+  if not exists (select 1 from public.suppliers where id = p_supplier_id and owner_id = v_entry.owner_id) then
+    raise exception 'Fornecedor invalido.';
+  end if;
+
+  if not exists (
+    select 1
+      from public.products
+     where id = p_product_id
+       and owner_id = v_entry.owner_id
+       and (active = true or id = v_entry.product_id)
+  ) then
+    raise exception 'Produto invalido ou inativo.';
+  end if;
+
+  if p_product_id = v_entry.product_id then
+    update public.products
+       set stock_kg = stock_kg + (p_weight_kg - v_entry.weight_kg),
+           updated_at = now()
+     where id = p_product_id
+       and owner_id = v_entry.owner_id;
+
+    if exists (select 1 from public.products where id = p_product_id and stock_kg < 0) then
+      raise exception 'Nao e possivel editar: estoque ficaria negativo.';
+    end if;
+  else
+    select stock_kg into v_old_stock
+      from public.products
+     where id = v_entry.product_id
+       and owner_id = v_entry.owner_id
+     for update;
+
+    if v_old_stock < v_entry.weight_kg then
+      raise exception 'Nao e possivel editar: estoque do produto original ficaria negativo.';
+    end if;
+
+    update public.products
+       set stock_kg = stock_kg - v_entry.weight_kg,
+           updated_at = now()
+     where id = v_entry.product_id
+       and owner_id = v_entry.owner_id;
+
+    update public.products
+       set stock_kg = stock_kg + p_weight_kg,
+           updated_at = now()
+     where id = p_product_id
+       and owner_id = v_entry.owner_id;
+  end if;
+
+  update public.stock_entries
+     set product_id = p_product_id,
+         supplier_id = p_supplier_id,
+         weight_kg = p_weight_kg,
+         unit_cost = p_unit_cost,
+         total_cost = p_total_cost,
+         occurred_at = p_occurred_at,
+         notes = p_notes
+   where id = p_entry_id;
+end;
+$$;
+
 create or replace function public.admin_delete_stock_entry(p_entry_id uuid)
 returns void
 language plpgsql
@@ -524,6 +614,7 @@ grant execute on function public.current_user_is_admin() to authenticated;
 grant execute on function public.can_manage_owner_records(uuid) to authenticated;
 grant execute on function public.admin_update_user_role(uuid, text) to authenticated;
 grant execute on function public.super_admin_update_company_limit(uuid, integer) to authenticated;
+grant execute on function public.admin_update_stock_entry(uuid, uuid, uuid, numeric, numeric, numeric, timestamptz, text) to authenticated;
 grant execute on function public.admin_delete_stock_entry(uuid) to authenticated;
 grant execute on function public.admin_delete_sale(uuid) to authenticated;
 grant execute on function public.admin_delete_expense(uuid) to authenticated;

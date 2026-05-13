@@ -51,10 +51,11 @@ import {
   saveProduct,
   saveSupplier,
   updateCompanyLimit,
+  updateStockEntry,
   updateUserRole,
 } from './lib/repository';
 import { formatDateTime, formatKg, formatMoney, fromInputDateTime, todayRange, toInputDateTime } from './lib/format';
-import type { AppData, Customer, ExpenseCategory, Page, Product, Supplier } from './lib/types';
+import type { AppData, Customer, ExpenseCategory, Page, Product, StockEntry, Supplier } from './lib/types';
 
 const emptyData: AppData = {
   companies: [],
@@ -1178,96 +1179,258 @@ function ProductForm({
 
 function EntriesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean }) {
   const activeProducts = data.products.filter((product) => product.active);
-  const [productId, setProductId] = useState('');
-  const [supplierId, setSupplierId] = useState('');
-  const [weight, setWeight] = useState(0);
-  const [unitCost, setUnitCost] = useState(0);
-  const [totalCost, setTotalCost] = useState(0);
-  const [date, setDate] = useState(toInputDateTime());
-  const [notes, setNotes] = useState('');
-
-  useEffect(() => {
-    if (weight && unitCost) setTotalCost(roundMoney(weight * unitCost));
-  }, [weight, unitCost]);
+  const [query, setQuery] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [viewing, setViewing] = useState<StockEntry | null>(null);
+  const [editing, setEditing] = useState<StockEntry | null>(null);
+  const [deleting, setDeleting] = useState<StockEntry | null>(null);
+  const filtered = filterBy(data.entries, query, (entry) => `${productName(data, entry.product_id)} ${supplierName(data, entry.supplier_id)} ${entry.notes || ''}`);
+  const closeEntryModal = () => {
+    setCreating(false);
+    setEditing(null);
+  };
 
   return (
-    <div className="two-column">
+    <div className="admin-layout">
       <section className="panel">
-        <h2>Registrar chegada de mercadoria</h2>
-        <form
-          className="form-grid"
-          onSubmit={(event) => {
-            event.preventDefault();
-            runAction('Entrada registrada e estoque atualizado.', async () => {
-              await createStockEntry({
-                product_id: productId,
-                supplier_id: supplierId,
-                weight_kg: weight,
-                unit_cost: unitCost,
-                total_cost: totalCost,
-                occurred_at: fromInputDateTime(date),
-                notes,
-              });
-              setWeight(0);
-              setUnitCost(0);
-              setTotalCost(0);
-              setNotes('');
-            });
-          }}
-        >
-          <Select label="Produto" value={productId} onChange={setProductId} options={activeProducts.map(optionFromName)} />
-          <Select label="Fornecedor" value={supplierId} onChange={setSupplierId} options={data.suppliers.map(optionFromName)} />
-          <label>
-            Peso recebido em kg
-            <input min="0.01" step="0.01" value={weight} onChange={(event) => setWeight(Number(event.target.value))} type="number" required />
-          </label>
-          <label>
-            Custo por kg
-            <input min="0" step="0.01" value={unitCost} onChange={(event) => setUnitCost(Number(event.target.value))} type="number" required />
-          </label>
-          <label>
-            Custo total
-            <input min="0" step="0.01" value={totalCost} onChange={(event) => setTotalCost(Number(event.target.value))} type="number" required />
-          </label>
-          <label>
-            Data e hora
-            <input value={date} onChange={(event) => setDate(event.target.value)} type="datetime-local" required />
-          </label>
-          <label className="span-all">
-            Observacao
-            <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
-          </label>
-          <button className="primary-button" disabled={!productId || !supplierId} type="submit">
+        <div className="panel-title-row">
+          <div>
+            <h2>Historico de entradas</h2>
+            <span className="muted-text">{filtered.length} entrada(s) encontrada(s)</span>
+          </div>
+          <button className="primary-button" onClick={() => setCreating(true)} type="button">
             <Plus size={18} />
-            Registrar entrada
+            Nova entrada
           </button>
-        </form>
-      </section>
-      <section className="panel">
-        <h2>Historico de entradas</h2>
+        </div>
+        <PanelSearch value={query} onChange={setQuery} placeholder="Buscar por produto, fornecedor ou observacao" />
         <Table
           empty="Nenhuma entrada registrada."
-          headers={isAdmin ? ['Produto', 'Fornecedor', 'Peso', 'Custo total', 'Data', ''] : ['Produto', 'Fornecedor', 'Peso', 'Custo total', 'Data']}
-          rows={data.entries.map((entry) => [
+          headers={['Produto', 'Fornecedor', 'Peso', 'Custo total', 'Data', 'Acoes']}
+          rows={filtered.map((entry) => [
             productName(data, entry.product_id),
             supplierName(data, entry.supplier_id),
             formatKg(entry.weight_kg),
             formatMoney(entry.total_cost),
             formatDateTime(entry.occurred_at),
-            ...(isAdmin
-              ? [
-                  <button
-                    className="small-button danger-button"
-                    onClick={() => confirmAction('Apagar esta entrada e ajustar o estoque?', () => runAction('Entrada apagada.', () => deleteStockEntry(entry.id)))}
-                    type="button"
-                  >
+            <div className="row-actions">
+              <button className="small-button" onClick={() => setViewing(entry)} type="button">
+                Ver
+              </button>
+              {isAdmin && (
+                <>
+                  <button className="small-button" onClick={() => setEditing(entry)} type="button">
+                    Editar
+                  </button>
+                  <button className="small-button danger-button" onClick={() => setDeleting(entry)} type="button">
                     Apagar
-                  </button>,
-                ]
-              : []),
+                  </button>
+                </>
+              )}
+            </div>,
           ])}
         />
       </section>
+
+      {(creating || editing) && (
+        <Modal title={editing ? 'Editar entrada' : 'Nova entrada'} onClose={closeEntryModal}>
+          <EntryForm
+            entry={editing}
+            products={activeProducts}
+            suppliers={data.suppliers}
+            onCancel={closeEntryModal}
+            onSubmit={(input) =>
+              runAction(editing ? 'Entrada atualizada e estoque ajustado.' : 'Entrada registrada e estoque atualizado.', async () => {
+                if (editing) await updateStockEntry(editing.id, input);
+                else await createStockEntry(input);
+                closeEntryModal();
+              })
+            }
+          />
+        </Modal>
+      )}
+
+      {viewing && (
+        <Modal title="Detalhes da entrada" onClose={() => setViewing(null)}>
+          <EntryDetails entry={viewing} data={data} />
+          <div className="form-actions">
+            <button className="secondary-button" onClick={() => setViewing(null)} type="button">
+              Fechar
+            </button>
+            {isAdmin && (
+              <button
+                className="primary-button"
+                onClick={() => {
+                  setEditing(viewing);
+                  setViewing(null);
+                }}
+                type="button"
+              >
+                <Save size={18} />
+                Editar entrada
+              </button>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {deleting && (
+        <Modal title="Apagar entrada" onClose={() => setDeleting(null)}>
+          <div className="notice danger">Apagar esta entrada e ajustar o estoque?</div>
+          <EntryDetails entry={deleting} data={data} compact />
+          <div className="form-actions">
+            <button className="secondary-button" onClick={() => setDeleting(null)} type="button">
+              Cancelar
+            </button>
+            <button
+              className="primary-button danger-solid-button"
+              onClick={() =>
+                runAction('Entrada apagada.', async () => {
+                  await deleteStockEntry(deleting.id);
+                  setDeleting(null);
+                })
+              }
+              type="button"
+            >
+              Apagar entrada
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function EntryForm({
+  entry,
+  products,
+  suppliers,
+  onSubmit,
+  onCancel,
+}: {
+  entry: StockEntry | null;
+  products: Product[];
+  suppliers: Supplier[];
+  onSubmit: (input: {
+    product_id: string;
+    supplier_id: string;
+    weight_kg: number;
+    unit_cost: number;
+    total_cost: number;
+    occurred_at: string;
+    notes: string;
+  }) => void;
+  onCancel: () => void;
+}) {
+  const productOptions = entry && !products.some((product) => product.id === entry.product_id)
+    ? [...products, { id: entry.product_id, name: 'Produto atual', active: true } as Product]
+    : products;
+  const [productId, setProductId] = useState(entry?.product_id || '');
+  const [supplierId, setSupplierId] = useState(entry?.supplier_id || '');
+  const [weight, setWeight] = useState(entry?.weight_kg || 0);
+  const [unitCost, setUnitCost] = useState(entry?.unit_cost || 0);
+  const [totalCost, setTotalCost] = useState(entry?.total_cost || 0);
+  const [date, setDate] = useState(entry ? toInputDateTime(entry.occurred_at) : toInputDateTime());
+  const [notes, setNotes] = useState(entry?.notes || '');
+
+  useEffect(() => {
+    if (weight && unitCost) setTotalCost(roundMoney(weight * unitCost));
+  }, [weight, unitCost]);
+
+  useEffect(() => {
+    setProductId(entry?.product_id || '');
+    setSupplierId(entry?.supplier_id || '');
+    setWeight(entry?.weight_kg || 0);
+    setUnitCost(entry?.unit_cost || 0);
+    setTotalCost(entry?.total_cost || 0);
+    setDate(entry ? toInputDateTime(entry.occurred_at) : toInputDateTime());
+    setNotes(entry?.notes || '');
+  }, [entry]);
+
+  return (
+    <form
+      className="form-grid"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit({
+          product_id: productId,
+          supplier_id: supplierId,
+          weight_kg: weight,
+          unit_cost: unitCost,
+          total_cost: totalCost,
+          occurred_at: fromInputDateTime(date),
+          notes,
+        });
+      }}
+    >
+      <Select label="Produto" value={productId} onChange={setProductId} options={productOptions.map(optionFromName)} />
+      <Select label="Fornecedor" value={supplierId} onChange={setSupplierId} options={suppliers.map(optionFromName)} />
+      <label>
+        Peso recebido em kg
+        <input min="0.01" step="0.01" value={weight} onChange={(event) => setWeight(Number(event.target.value))} type="number" required />
+      </label>
+      <label>
+        Custo por kg
+        <input min="0" step="0.01" value={unitCost} onChange={(event) => setUnitCost(Number(event.target.value))} type="number" required />
+      </label>
+      <label>
+        Custo total
+        <input min="0" step="0.01" value={totalCost} onChange={(event) => setTotalCost(Number(event.target.value))} type="number" required />
+      </label>
+      <label>
+        Data e hora
+        <input value={date} onChange={(event) => setDate(event.target.value)} type="datetime-local" required />
+      </label>
+      <label className="span-all">
+        Observacao
+        <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
+      </label>
+      <div className="form-actions">
+        <button className="secondary-button" onClick={onCancel} type="button">
+          Cancelar
+        </button>
+        <button className="primary-button" disabled={!productId || !supplierId} type="submit">
+          <Save size={18} />
+          Salvar
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function EntryDetails({ entry, data, compact = false }: { entry: StockEntry; data: AppData; compact?: boolean }) {
+  return (
+    <div className={compact ? 'detail-grid compact' : 'detail-grid'}>
+      <div>
+        <span>Produto</span>
+        <strong>{productName(data, entry.product_id)}</strong>
+      </div>
+      <div>
+        <span>Fornecedor</span>
+        <strong>{supplierName(data, entry.supplier_id)}</strong>
+      </div>
+      <div>
+        <span>Peso</span>
+        <strong>{formatKg(entry.weight_kg)}</strong>
+      </div>
+      <div>
+        <span>Custo por kg</span>
+        <strong>{formatMoney(entry.unit_cost)}</strong>
+      </div>
+      <div>
+        <span>Custo total</span>
+        <strong>{formatMoney(entry.total_cost)}</strong>
+      </div>
+      <div>
+        <span>Data</span>
+        <strong>{formatDateTime(entry.occurred_at)}</strong>
+      </div>
+      {entry.notes && (
+        <div>
+          <span>Observacao</span>
+          <strong>{entry.notes}</strong>
+        </div>
+      )}
     </div>
   );
 }
