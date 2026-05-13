@@ -16,6 +16,7 @@ import {
   Lock,
   LogOut,
   Mail,
+  Menu,
   Mic,
   PackagePlus,
   Plus,
@@ -39,23 +40,29 @@ import {
   createSupplier,
   createStockEntry,
   createUser,
+  clearSupportCompany,
   deleteExpense,
+  deleteCustomer,
   deleteProduct,
   deleteSale,
+  deleteSupplier,
   deleteStockEntry,
   exportBackup,
   importBackup,
   loadAppData,
+  removeOperator,
   saveCustomer,
   saveExpense,
   saveProduct,
   saveSupplier,
+  setSupportCompany,
   updateCompanyLimit,
+  updateSale,
   updateStockEntry,
   updateUserRole,
 } from './lib/repository';
 import { formatDateTime, formatKg, formatMoney, fromInputDateTime, todayRange, toInputDateTime } from './lib/format';
-import type { AppData, Customer, ExpenseCategory, Page, Product, StockEntry, Supplier } from './lib/types';
+import type { AppData, Customer, Expense, ExpenseCategory, Page, Product, Sale, StockEntry, Supplier } from './lib/types';
 
 const emptyData: AppData = {
   companies: [],
@@ -120,7 +127,7 @@ const navItems = [
   { page: 'dashboard' as Page, label: 'Dashboard', icon: LayoutDashboard },
   { page: 'products' as Page, label: 'Produtos e Estoque', icon: Boxes },
   { page: 'entries' as Page, label: 'Entradas', icon: PackagePlus },
-  { page: 'sales' as Page, label: 'Vendas e Saidas', icon: ShoppingCart },
+  { page: 'sales' as Page, label: 'Vendas', icon: ShoppingCart },
   { page: 'voice' as Page, label: 'Lançar por Áudio', icon: Mic },
   { page: 'expenses' as Page, label: 'Despesas', icon: ReceiptText },
   { page: 'suppliers' as Page, label: 'Fornecedores', icon: Truck },
@@ -137,6 +144,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
+  const [sidebarPinned, setSidebarPinned] = useState(false);
+  const [sidebarHovered, setSidebarHovered] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: authData }) => {
@@ -194,18 +203,54 @@ export default function App() {
 
   const CurrentIcon = navItems.find((item) => item.page === page)?.icon || Warehouse;
   const isSuperAdmin = data.currentProfile?.role === 'super_admin';
-  const visibleNavItems = navItems.filter((item) => item.page !== 'admin' || isSuperAdmin);
+  const isOwner = data.currentProfile?.role === 'owner';
+  const canOpenAdmin = isSuperAdmin || isOwner;
+  const canManageRecords = isSuperAdmin || isOwner;
+  const sidebarExpanded = sidebarPinned || sidebarHovered;
+  const supportOwnerId = isSuperAdmin ? data.currentProfile?.support_company_owner_id || null : null;
+  const supportCompany = supportOwnerId ? data.companies.find((company) => company.owner_id === supportOwnerId) || null : null;
+  const supportRequired = isSuperAdmin && !supportOwnerId && page !== 'admin' && page !== 'backup';
+  const scopedData =
+    isSuperAdmin && supportOwnerId
+      ? {
+          ...data,
+          companies: supportCompany ? [supportCompany] : [],
+          profiles: data.profiles.filter((item) => item.company_owner_id === supportOwnerId || item.role === 'super_admin'),
+          products: data.products.filter((item) => item.owner_id === supportOwnerId),
+          suppliers: data.suppliers.filter((item) => item.owner_id === supportOwnerId),
+          customers: data.customers.filter((item) => item.owner_id === supportOwnerId),
+          entries: data.entries.filter((item) => item.owner_id === supportOwnerId),
+          sales: data.sales.filter((item) => item.owner_id === supportOwnerId),
+          expenses: data.expenses.filter((item) => item.owner_id === supportOwnerId),
+        }
+      : data;
+  const visibleNavItems = navItems.filter((item) => item.page !== 'admin' || canOpenAdmin);
 
   return (
-    <div className="shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">
+    <div className={sidebarExpanded ? 'shell sidebar-expanded' : 'shell sidebar-collapsed'}>
+      <aside
+        className={sidebarExpanded ? 'sidebar expanded' : 'sidebar collapsed'}
+        onMouseEnter={() => setSidebarHovered(true)}
+        onMouseLeave={() => setSidebarHovered(false)}
+      >
+        <div className="sidebar-top">
+          <button
+            className={sidebarPinned ? 'sidebar-toggle active' : 'sidebar-toggle'}
+            onClick={() => setSidebarPinned((current) => !current)}
+            type="button"
+            aria-label={sidebarPinned ? 'Recolher menu lateral' : 'Fixar menu lateral aberto'}
+            title={sidebarPinned ? 'Recolher menu' : 'Fixar menu'}
+          >
+            <Menu size={18} />
+          </button>
+          <div className="brand">
+            <div className="brand-mark">
             <Warehouse size={24} />
-          </div>
-          <div>
+            </div>
+            <div className="brand-copy">
             <strong>Papelão Gestor</strong>
             <span>Controle da distribuidora</span>
+            </div>
           </div>
         </div>
 
@@ -218,9 +263,10 @@ export default function App() {
                 className={page === item.page ? 'nav-button active' : 'nav-button'}
                 onClick={() => setPage(item.page)}
                 type="button"
+                title={sidebarExpanded ? undefined : item.label}
               >
                 <Icon size={18} />
-                {item.label}
+                <span className="nav-label">{item.label}</span>
               </button>
             );
           })}
@@ -228,15 +274,20 @@ export default function App() {
 
         <div className="sidebar-profile">
           <div className="profile-avatar">RP</div>
-          <div>
+          <div className="sidebar-profile-copy">
             <strong>{data.currentProfile?.name || 'Administrador'}</strong>
             <span>{session.user.email}</span>
           </div>
         </div>
 
-        <button className="nav-button exit" onClick={() => supabase.auth.signOut()} type="button">
+        <button
+          className="nav-button exit"
+          onClick={() => supabase.auth.signOut()}
+          type="button"
+          title={sidebarExpanded ? undefined : 'Sair'}
+        >
           <LogOut size={18} />
-          Sair
+          <span className="nav-label">Sair</span>
         </button>
       </aside>
 
@@ -270,6 +321,7 @@ export default function App() {
               <CurrentIcon size={30} />
               {navItems.find((item) => item.page === page)?.label}
             </h1>
+            {isSuperAdmin && supportCompany && <span className="muted-text">Suporte ativo em: {supportCompany.name}</span>}
           </div>
           <div className="heading-actions">
             <button className="secondary-button" type="button" onClick={() => setPage('backup')}>
@@ -290,16 +342,28 @@ export default function App() {
         {notice && <div className="notice success">{notice}</div>}
         {error && <div className="notice danger">{error}</div>}
         {loading && <div className="notice neutral">Atualizando dados...</div>}
+        {isSuperAdmin && !supportOwnerId && page !== 'admin' && (
+          <div className="notice neutral">Selecione uma empresa na tela Admin para entrar em modo de suporte e evitar ver dados misturados.</div>
+        )}
 
-        {page === 'dashboard' && <Dashboard data={data} />}
-        {page === 'products' && <ProductsPage data={data} runAction={runAction} isAdmin={isSuperAdmin} />}
-        {page === 'entries' && <EntriesPage data={data} runAction={runAction} isAdmin={isSuperAdmin} />}
-        {page === 'sales' && <SalesPage data={data} runAction={runAction} isAdmin={isSuperAdmin} />}
-        {page === 'voice' && <VoicePage data={data} runAction={runAction} />}
-        {page === 'expenses' && <ExpensesPage data={data} runAction={runAction} isAdmin={isSuperAdmin} />}
-        {page === 'suppliers' && <ContactsPage type="suppliers" data={data} runAction={runAction} />}
-        {page === 'customers' && <ContactsPage type="customers" data={data} runAction={runAction} />}
-        {page === 'admin' && isSuperAdmin && <AdminPage data={data} runAction={runAction} />}
+        {supportRequired ? (
+          <section className="panel">
+            <h2>Escolha uma empresa para suporte</h2>
+            <p>Como admin geral, selecione primeiro a empresa na tela Admin. Assim voce enxerga e ajusta apenas o contexto correto.</p>
+          </section>
+        ) : (
+          <>
+            {page === 'dashboard' && <Dashboard data={scopedData} />}
+            {page === 'products' && <ProductsPage data={scopedData} runAction={runAction} isAdmin={isSuperAdmin} />}
+            {page === 'entries' && <EntriesPage data={scopedData} runAction={runAction} isAdmin={isSuperAdmin} />}
+            {page === 'sales' && <SalesPage data={scopedData} runAction={runAction} isAdmin={isSuperAdmin} />}
+            {page === 'voice' && <VoicePage data={scopedData} runAction={runAction} />}
+            {page === 'expenses' && <ExpensesPage data={scopedData} runAction={runAction} canManage={canManageRecords} />}
+            {page === 'suppliers' && <ContactsPage type="suppliers" data={scopedData} runAction={runAction} canManage={canManageRecords} />}
+            {page === 'customers' && <ContactsPage type="customers" data={scopedData} runAction={runAction} canManage={canManageRecords} />}
+            {page === 'admin' && canOpenAdmin && <AdminPage data={data} runAction={runAction} />}
+          </>
+        )}
         {page === 'backup' && <BackupPage runAction={runAction} />}
       </main>
     </div>
@@ -1109,10 +1173,12 @@ function ProductForm({
 }) {
   const [name, setName] = useState(product?.name || '');
   const [category, setCategory] = useState(product?.category || '');
-  const [price, setPrice] = useState(product?.price_per_kg || 0);
-  const [stock, setStock] = useState(product?.stock_kg || 0);
-  const [minimum, setMinimum] = useState(product?.min_stock_kg || 0);
+  const [price, setPrice] = useState(product ? String(product.price_per_kg) : '');
+  const [stock, setStock] = useState(product ? String(product.stock_kg) : '');
+  const [minimum, setMinimum] = useState(product ? String(product.min_stock_kg) : '');
   const [active, setActive] = useState(product?.active ?? true);
+  const productNameOptions = Array.from(new Set(products.map((item) => item.name).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  const categoryOptions = Array.from(new Set(products.map((item) => item.category).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   const duplicate = products.some(
     (item) => item.id !== product?.id && normalizeName(item.name) === normalizeName(name),
   );
@@ -1120,9 +1186,9 @@ function ProductForm({
   useEffect(() => {
     setName(product?.name || '');
     setCategory(product?.category || '');
-    setPrice(product?.price_per_kg || 0);
-    setStock(product?.stock_kg || 0);
-    setMinimum(product?.min_stock_kg || 0);
+    setPrice(product ? String(product.price_per_kg) : '');
+    setStock(product ? String(product.stock_kg) : '');
+    setMinimum(product ? String(product.min_stock_kg) : '');
     setActive(product?.active ?? true);
   }, [product]);
 
@@ -1132,31 +1198,48 @@ function ProductForm({
       onSubmit={(event) => {
         event.preventDefault();
         if (duplicate) return;
-        onSubmit({ name, category, price_per_kg: price, stock_kg: product ? undefined : stock, min_stock_kg: minimum, active });
+        onSubmit({
+          name,
+          category,
+          price_per_kg: Number(price),
+          stock_kg: product ? undefined : Number(stock || 0),
+          min_stock_kg: Number(minimum || 0),
+          active,
+        });
       }}
     >
       <label>
         Nome
-        <input value={name} onChange={(event) => setName(event.target.value)} required />
+        <input list="product-name-options" value={name} onChange={(event) => setName(event.target.value)} placeholder="Digite ou pesquise um produto" required />
+        <datalist id="product-name-options">
+          {productNameOptions.map((option) => (
+            <option key={option} value={option} />
+          ))}
+        </datalist>
       </label>
       {duplicate && <div className="notice danger span-all">Ja existe um produto cadastrado com esse nome.</div>}
       <label>
         Categoria
-        <input value={category} onChange={(event) => setCategory(event.target.value)} required />
+        <input list="product-category-options" value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Digite ou pesquise uma categoria" required />
+        <datalist id="product-category-options">
+          {categoryOptions.map((option) => (
+            <option key={option} value={option} />
+          ))}
+        </datalist>
       </label>
       <label>
         Preco por kg
-        <input min="0" step="0.01" value={price} onChange={(event) => setPrice(Number(event.target.value))} type="number" required />
+        <input min="0" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="0,00" type="number" required />
       </label>
       {!product && (
         <label>
           Estoque inicial em kg
-          <input min="0" step="0.01" value={stock} onChange={(event) => setStock(Number(event.target.value))} type="number" />
+          <input min="0" step="0.01" value={stock} onChange={(event) => setStock(event.target.value)} placeholder="0,00" type="number" />
         </label>
       )}
       <label>
         Estoque minimo em kg
-        <input min="0" step="0.01" value={minimum} onChange={(event) => setMinimum(Number(event.target.value))} type="number" />
+        <input min="0" step="0.01" value={minimum} onChange={(event) => setMinimum(event.target.value)} placeholder="0,00" type="number" />
       </label>
       <label className="checkbox-line">
         <input checked={active} onChange={(event) => setActive(event.target.checked)} type="checkbox" />
@@ -1325,27 +1408,36 @@ function EntryForm({
   const productOptions = entry && !products.some((product) => product.id === entry.product_id)
     ? [...products, { id: entry.product_id, name: 'Produto atual', active: true } as Product]
     : products;
+  const supplierOptions = suppliers;
   const [productId, setProductId] = useState(entry?.product_id || '');
   const [supplierId, setSupplierId] = useState(entry?.supplier_id || '');
-  const [weight, setWeight] = useState(entry?.weight_kg || 0);
-  const [unitCost, setUnitCost] = useState(entry?.unit_cost || 0);
-  const [totalCost, setTotalCost] = useState(entry?.total_cost || 0);
+  const [productQuery, setProductQuery] = useState(() => productOptions.find((product) => product.id === entry?.product_id)?.name || '');
+  const [supplierQuery, setSupplierQuery] = useState(() => supplierOptions.find((supplier) => supplier.id === entry?.supplier_id)?.name || '');
+  const [weight, setWeight] = useState(entry ? String(entry.weight_kg) : '');
+  const [unitCost, setUnitCost] = useState(entry ? String(entry.unit_cost) : '');
+  const [totalCost, setTotalCost] = useState(entry ? String(entry.total_cost) : '');
   const [date, setDate] = useState(entry ? toInputDateTime(entry.occurred_at) : toInputDateTime());
   const [notes, setNotes] = useState(entry?.notes || '');
 
   useEffect(() => {
-    if (weight && unitCost) setTotalCost(roundMoney(weight * unitCost));
+    const weightValue = Number(weight);
+    const unitCostValue = Number(unitCost);
+    if (weight !== '' && unitCost !== '' && !Number.isNaN(weightValue) && !Number.isNaN(unitCostValue)) {
+      setTotalCost(String(roundMoney(weightValue * unitCostValue)));
+    }
   }, [weight, unitCost]);
 
   useEffect(() => {
     setProductId(entry?.product_id || '');
     setSupplierId(entry?.supplier_id || '');
-    setWeight(entry?.weight_kg || 0);
-    setUnitCost(entry?.unit_cost || 0);
-    setTotalCost(entry?.total_cost || 0);
+    setProductQuery(productOptions.find((product) => product.id === entry?.product_id)?.name || '');
+    setSupplierQuery(supplierOptions.find((supplier) => supplier.id === entry?.supplier_id)?.name || '');
+    setWeight(entry ? String(entry.weight_kg) : '');
+    setUnitCost(entry ? String(entry.unit_cost) : '');
+    setTotalCost(entry ? String(entry.total_cost) : '');
     setDate(entry ? toInputDateTime(entry.occurred_at) : toInputDateTime());
     setNotes(entry?.notes || '');
-  }, [entry]);
+  }, [entry, productOptions, supplierOptions]);
 
   return (
     <form
@@ -1355,27 +1447,65 @@ function EntryForm({
         onSubmit({
           product_id: productId,
           supplier_id: supplierId,
-          weight_kg: weight,
-          unit_cost: unitCost,
-          total_cost: totalCost,
+          weight_kg: Number(weight),
+          unit_cost: Number(unitCost),
+          total_cost: Number(totalCost),
           occurred_at: fromInputDateTime(date),
           notes,
         });
       }}
     >
-      <Select label="Produto" value={productId} onChange={setProductId} options={productOptions.map(optionFromName)} />
-      <Select label="Fornecedor" value={supplierId} onChange={setSupplierId} options={suppliers.map(optionFromName)} />
+      <label>
+        Produto
+        <input
+          list="entry-product-options"
+          value={productQuery}
+          onChange={(event) => {
+            const value = event.target.value;
+            setProductQuery(value);
+            const match = productOptions.find((product) => normalizeName(product.name) === normalizeName(value));
+            setProductId(match?.id || '');
+          }}
+          placeholder="Digite ou pesquise um produto"
+          required
+        />
+        <datalist id="entry-product-options">
+          {productOptions.map((product) => (
+            <option key={product.id} value={product.name} />
+          ))}
+        </datalist>
+      </label>
+      <label>
+        Fornecedor
+        <input
+          list="entry-supplier-options"
+          value={supplierQuery}
+          onChange={(event) => {
+            const value = event.target.value;
+            setSupplierQuery(value);
+            const match = supplierOptions.find((supplier) => normalizeName(supplier.name) === normalizeName(value));
+            setSupplierId(match?.id || '');
+          }}
+          placeholder="Digite ou pesquise um fornecedor"
+          required
+        />
+        <datalist id="entry-supplier-options">
+          {supplierOptions.map((supplier) => (
+            <option key={supplier.id} value={supplier.name} />
+          ))}
+        </datalist>
+      </label>
       <label>
         Peso recebido em kg
-        <input min="0.01" step="0.01" value={weight} onChange={(event) => setWeight(Number(event.target.value))} type="number" required />
+        <input min="0.01" step="0.01" value={weight} onChange={(event) => setWeight(event.target.value)} placeholder="0,00" type="number" required />
       </label>
       <label>
         Custo por kg
-        <input min="0" step="0.01" value={unitCost} onChange={(event) => setUnitCost(Number(event.target.value))} type="number" required />
+        <input min="0" step="0.01" value={unitCost} onChange={(event) => setUnitCost(event.target.value)} placeholder="0,00" type="number" required />
       </label>
       <label>
         Custo total
-        <input min="0" step="0.01" value={totalCost} onChange={(event) => setTotalCost(Number(event.target.value))} type="number" required />
+        <input min="0" step="0.01" value={totalCost} onChange={(event) => setTotalCost(event.target.value)} placeholder="0,00" type="number" required />
       </label>
       <label>
         Data e hora
@@ -1437,180 +1567,476 @@ function EntryDetails({ entry, data, compact = false }: { entry: StockEntry; dat
 
 function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean }) {
   const activeProducts = data.products.filter((product) => product.active);
-  const [productId, setProductId] = useState('');
-  const [customerId, setCustomerId] = useState('');
-  const [weight, setWeight] = useState(0);
-  const [date, setDate] = useState(toInputDateTime());
-  const [notes, setNotes] = useState('');
-  const selectedProduct = data.products.find((product) => product.id === productId);
-  const unitPrice = selectedProduct?.price_per_kg || 0;
-  const total = roundMoney(unitPrice * weight);
-  const blocked = Boolean(selectedProduct && weight > selectedProduct.stock_kg);
+  const [query, setQuery] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [viewing, setViewing] = useState<Sale | null>(null);
+  const [editing, setEditing] = useState<Sale | null>(null);
+  const [deleting, setDeleting] = useState<Sale | null>(null);
+  const filtered = filterBy(data.sales, query, (sale) => `${productName(data, sale.product_id)} ${customerName(data, sale.customer_id)} ${sale.notes || ''}`);
+  const closeSaleModal = () => {
+    setCreating(false);
+    setEditing(null);
+  };
 
   return (
-    <div className="two-column">
+    <div className="admin-layout">
       <section className="panel">
-        <h2>Registrar venda/saida</h2>
-        <form
-          className="form-grid"
-          onSubmit={(event) => {
-            event.preventDefault();
-            runAction('Venda registrada e estoque atualizado.', async () => {
-              await createSale({
-                product_id: productId,
-                customer_id: customerId,
-                weight_kg: weight,
-                unit_price: unitPrice,
-                total_price: total,
-                occurred_at: fromInputDateTime(date),
-                notes,
-              });
-              setWeight(0);
-              setNotes('');
-            });
-          }}
-        >
-          <Select label="Produto" value={productId} onChange={setProductId} options={activeProducts.map(optionFromName)} />
-          <Select label="Cliente" value={customerId} onChange={setCustomerId} options={data.customers.map(optionFromName)} />
-          <label>
-            Peso vendido em kg
-            <input min="0.01" step="0.01" value={weight} onChange={(event) => setWeight(Number(event.target.value))} type="number" required />
-          </label>
-          <label>
-            Preco por kg
-            <input value={unitPrice} readOnly type="number" />
-          </label>
-          <label>
-            Total da venda
-            <input value={total} readOnly type="number" />
-          </label>
-          <label>
-            Data e hora
-            <input value={date} onChange={(event) => setDate(event.target.value)} type="datetime-local" required />
-          </label>
-          <label className="span-all">
-            Observacao
-            <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
-          </label>
-          {selectedProduct && <div className={blocked ? 'notice danger span-all' : 'notice neutral span-all'}>Estoque atual: {formatKg(selectedProduct.stock_kg)}</div>}
-          <button className="primary-button" disabled={!productId || !customerId || blocked} type="submit">
-            <ShoppingCart size={18} />
-            Registrar venda
+        <div className="panel-title-row">
+          <div className="brand-copy">
+            <h2>Historico de vendas</h2>
+            <span className="muted-text">{filtered.length} venda(s) encontrada(s)</span>
+          </div>
+          <button className="primary-button" onClick={() => setCreating(true)} type="button">
+            <Plus size={18} />
+            Nova venda
           </button>
-        </form>
-      </section>
-      <section className="panel">
-        <h2>Historico de vendas</h2>
+        </div>
+        <PanelSearch value={query} onChange={setQuery} placeholder="Buscar por produto, cliente ou observacao" />
         <Table
           empty="Nenhuma venda registrada."
-          headers={isAdmin ? ['Produto', 'Cliente', 'Peso', 'Total', 'Data', ''] : ['Produto', 'Cliente', 'Peso', 'Total', 'Data']}
-          rows={data.sales.map((sale) => [
+          headers={['Produto', 'Cliente', 'Peso', 'Total', 'Data', 'Acoes']}
+          rows={filtered.map((sale) => [
             productName(data, sale.product_id),
             customerName(data, sale.customer_id),
             formatKg(sale.weight_kg),
             formatMoney(sale.total_price),
             formatDateTime(sale.occurred_at),
-            ...(isAdmin
-              ? [
+            <div className="row-actions">
+              <button className="small-button" onClick={() => setViewing(sale)} type="button">
+                Ver
+              </button>
+              {isAdmin && (
+                <>
+                  <button className="small-button" onClick={() => setEditing(sale)} type="button">
+                    Editar
+                  </button>
                   <button
                     className="small-button danger-button"
-                    onClick={() => confirmAction('Apagar esta venda e devolver o peso ao estoque?', () => runAction('Venda apagada.', () => deleteSale(sale.id)))}
+                    onClick={() => setDeleting(sale)}
                     type="button"
                   >
                     Apagar
-                  </button>,
-                ]
-              : []),
+                  </button>
+                </>
+              )}
+            </div>,
           ])}
         />
       </section>
+
+      {(creating || editing) && (
+        <Modal title={editing ? 'Editar venda' : 'Nova venda'} onClose={closeSaleModal}>
+          <SaleForm
+            sale={editing}
+            data={data}
+            products={activeProducts}
+            onCancel={closeSaleModal}
+            onSubmit={(input) =>
+              runAction(editing ? 'Venda atualizada e estoque ajustado.' : 'Venda registrada e estoque atualizado.', async () => {
+                if (editing) await updateSale(editing.id, input);
+                else await createSale(input);
+                closeSaleModal();
+              })
+            }
+          />
+        </Modal>
+      )}
+
+      {viewing && (
+        <Modal title="Detalhes da venda" onClose={() => setViewing(null)}>
+          <SaleDetails sale={viewing} data={data} />
+          <div className="form-actions">
+            <button className="secondary-button" onClick={() => setViewing(null)} type="button">
+              Fechar
+            </button>
+            {isAdmin && (
+              <button
+                className="primary-button"
+                onClick={() => {
+                  setEditing(viewing);
+                  setViewing(null);
+                }}
+                type="button"
+              >
+                <Save size={18} />
+                Editar venda
+              </button>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {deleting && (
+        <Modal title="Apagar venda" onClose={() => setDeleting(null)}>
+          <div className="notice danger">Apagar esta venda e devolver o peso ao estoque?</div>
+          <SaleDetails sale={deleting} data={data} compact />
+          <div className="form-actions">
+            <button className="secondary-button" onClick={() => setDeleting(null)} type="button">
+              Cancelar
+            </button>
+            <button
+              className="primary-button danger-solid-button"
+              onClick={() =>
+                runAction('Venda apagada.', async () => {
+                  await deleteSale(deleting.id);
+                  setDeleting(null);
+                })
+              }
+              type="button"
+            >
+              Apagar venda
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
-function ExpensesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean }) {
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState<ExpenseCategory>('almoco');
-  const [amount, setAmount] = useState(0);
-  const [date, setDate] = useState(toInputDateTime());
-  const [notes, setNotes] = useState('');
+function SaleForm({
+  sale,
+  data,
+  products,
+  onSubmit,
+  onCancel,
+}: {
+  sale: Sale | null;
+  data: AppData;
+  products: Product[];
+  onSubmit: (input: {
+    product_id: string;
+    customer_id: string;
+    weight_kg: number;
+    unit_price: number;
+    total_price: number;
+    occurred_at: string;
+    notes: string;
+  }) => void;
+  onCancel: () => void;
+}) {
+  const currentProduct = sale ? data.products.find((product) => product.id === sale.product_id) : null;
+  const productOptions = currentProduct && !products.some((product) => product.id === currentProduct.id) ? [...products, currentProduct] : products;
+  const [productId, setProductId] = useState(sale?.product_id || '');
+  const [customerId, setCustomerId] = useState(sale?.customer_id || '');
+  const [weight, setWeight] = useState(sale?.weight_kg || 0);
+  const [date, setDate] = useState(sale ? toInputDateTime(sale.occurred_at) : toInputDateTime());
+  const [notes, setNotes] = useState(sale?.notes || '');
+  const selectedProduct = data.products.find((product) => product.id === productId);
+  const availableStock = selectedProduct ? selectedProduct.stock_kg + (sale?.product_id === productId ? sale.weight_kg : 0) : 0;
+  const unitPrice = selectedProduct?.price_per_kg || 0;
+  const total = roundMoney(unitPrice * weight);
+  const blocked = Boolean(selectedProduct && weight > availableStock);
+
+  useEffect(() => {
+    setProductId(sale?.product_id || '');
+    setCustomerId(sale?.customer_id || '');
+    setWeight(sale?.weight_kg || 0);
+    setDate(sale ? toInputDateTime(sale.occurred_at) : toInputDateTime());
+    setNotes(sale?.notes || '');
+  }, [sale]);
 
   return (
-    <div className="two-column">
+    <form
+      className="form-grid"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit({
+          product_id: productId,
+          customer_id: customerId,
+          weight_kg: weight,
+          unit_price: unitPrice,
+          total_price: total,
+          occurred_at: fromInputDateTime(date),
+          notes,
+        });
+      }}
+    >
+      <Select label="Produto" value={productId} onChange={setProductId} options={productOptions.map(optionFromName)} />
+      <Select label="Cliente" value={customerId} onChange={setCustomerId} options={data.customers.map(optionFromName)} />
+      <label>
+        Peso vendido em kg
+        <input min="0.01" step="0.01" value={weight} onChange={(event) => setWeight(Number(event.target.value))} type="number" required />
+      </label>
+      <label>
+        Preco por kg
+        <input value={unitPrice} readOnly type="number" />
+      </label>
+      <label>
+        Total da venda
+        <input value={total} readOnly type="number" />
+      </label>
+      <label>
+        Data e hora
+        <input value={date} onChange={(event) => setDate(event.target.value)} type="datetime-local" required />
+      </label>
+      <label className="span-all">
+        Observacao
+        <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
+      </label>
+      {selectedProduct && <div className={blocked ? 'notice danger span-all' : 'notice neutral span-all'}>Estoque disponivel: {formatKg(availableStock)}</div>}
+      <div className="form-actions">
+        <button className="secondary-button" onClick={onCancel} type="button">
+          Cancelar
+        </button>
+        <button className="primary-button" disabled={!productId || !customerId || blocked} type="submit">
+          <Save size={18} />
+          Salvar
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function SaleDetails({ sale, data, compact = false }: { sale: Sale; data: AppData; compact?: boolean }) {
+  return (
+    <div className={compact ? 'detail-grid compact' : 'detail-grid'}>
+      <div>
+        <span>Produto</span>
+        <strong>{productName(data, sale.product_id)}</strong>
+      </div>
+      <div>
+        <span>Cliente</span>
+        <strong>{customerName(data, sale.customer_id)}</strong>
+      </div>
+      <div>
+        <span>Peso</span>
+        <strong>{formatKg(sale.weight_kg)}</strong>
+      </div>
+      <div>
+        <span>Preco por kg</span>
+        <strong>{formatMoney(sale.unit_price)}</strong>
+      </div>
+      <div>
+        <span>Total</span>
+        <strong>{formatMoney(sale.total_price)}</strong>
+      </div>
+      <div>
+        <span>Data</span>
+        <strong>{formatDateTime(sale.occurred_at)}</strong>
+      </div>
+      {sale.notes && (
+        <div>
+          <span>Observacao</span>
+          <strong>{sale.notes}</strong>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExpensesPage({ data, runAction, canManage }: PageProps & { canManage: boolean }) {
+  const [query, setQuery] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [viewing, setViewing] = useState<Expense | null>(null);
+  const [editing, setEditing] = useState<Expense | null>(null);
+  const [deleting, setDeleting] = useState<Expense | null>(null);
+  const filtered = filterBy(data.expenses, query, (expense) => `${expense.description} ${expenseLabels[expense.category]} ${expense.notes || ''}`);
+  const closeExpenseModal = () => {
+    setCreating(false);
+    setEditing(null);
+  };
+
+  return (
+    <div className="admin-layout">
       <section className="panel">
-        <h2>Nova despesa</h2>
-        <form
-          className="form-grid"
-          onSubmit={(event) => {
-            event.preventDefault();
-            runAction('Despesa registrada.', async () => {
-              await saveExpense({ description, category, amount, occurred_at: fromInputDateTime(date), notes });
-              setDescription('');
-              setAmount(0);
-              setNotes('');
-            });
-          }}
-        >
-          <label>
-            Descricao
-            <input value={description} onChange={(event) => setDescription(event.target.value)} required />
-          </label>
-          <label>
-            Categoria
-            <select value={category} onChange={(event) => setCategory(event.target.value as ExpenseCategory)}>
-              {Object.entries(expenseLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Valor
-            <input min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(Number(event.target.value))} type="number" required />
-          </label>
-          <label>
-            Data e hora
-            <input value={date} onChange={(event) => setDate(event.target.value)} type="datetime-local" required />
-          </label>
-          <label className="span-all">
-            Observacao
-            <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
-          </label>
-          <button className="primary-button" type="submit">
+        <div className="panel-title-row">
+          <div>
+            <h2>Historico de despesas</h2>
+            <span className="muted-text">{filtered.length} despesa(s) encontrada(s)</span>
+          </div>
+          <button className="primary-button" onClick={() => setCreating(true)} type="button">
             <Plus size={18} />
-            Registrar despesa
+            Nova despesa
           </button>
-        </form>
-      </section>
-      <section className="panel">
-        <h2>Historico de despesas</h2>
+        </div>
+        <PanelSearch value={query} onChange={setQuery} placeholder="Buscar por descricao, categoria ou observacao" />
         <Table
           empty="Nenhuma despesa registrada."
-          headers={isAdmin ? ['Descricao', 'Categoria', 'Valor', 'Data', ''] : ['Descricao', 'Categoria', 'Valor', 'Data']}
-          rows={data.expenses.map((expense) => [
+          headers={['Descricao', 'Categoria', 'Valor', 'Data', 'Acoes']}
+          rows={filtered.map((expense) => [
             expense.description,
             expenseLabels[expense.category],
             formatMoney(expense.amount),
             formatDateTime(expense.occurred_at),
-            ...(isAdmin
-              ? [
-                  <button
-                    className="small-button danger-button"
-                    onClick={() => confirmAction('Apagar esta despesa?', () => runAction('Despesa apagada.', () => deleteExpense(expense.id)))}
-                    type="button"
-                  >
-                    Apagar
-                  </button>,
-                ]
-              : []),
+            <div className="row-actions">
+              <button className="small-button" onClick={() => setViewing(expense)} type="button">
+                Ver
+              </button>
+              <button className="small-button" onClick={() => setEditing(expense)} type="button">
+                Editar
+              </button>
+              {canManage && (
+                <button className="small-button danger-button" onClick={() => setDeleting(expense)} type="button">
+                  Apagar
+                </button>
+              )}
+            </div>,
           ])}
         />
       </section>
+
+      {(creating || editing) && (
+        <Modal title={editing ? 'Editar despesa' : 'Nova despesa'} onClose={closeExpenseModal}>
+          <ExpenseForm
+            expense={editing}
+            onCancel={closeExpenseModal}
+            onSubmit={(input) =>
+              runAction(editing ? 'Despesa atualizada.' : 'Despesa registrada.', async () => {
+                await saveExpense(input, editing?.id);
+                closeExpenseModal();
+              })
+            }
+          />
+        </Modal>
+      )}
+
+      {viewing && (
+        <Modal title="Detalhes da despesa" onClose={() => setViewing(null)}>
+          <ExpenseDetails expense={viewing} />
+          <div className="form-actions">
+            <button className="secondary-button" onClick={() => setViewing(null)} type="button">
+              Fechar
+            </button>
+            <button
+              className="primary-button"
+              onClick={() => {
+                setEditing(viewing);
+                setViewing(null);
+              }}
+              type="button"
+            >
+              <Save size={18} />
+              Editar despesa
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {deleting && (
+        <Modal title="Apagar despesa" onClose={() => setDeleting(null)}>
+          <div className="notice danger">Apagar esta despesa?</div>
+          <ExpenseDetails expense={deleting} compact />
+          <div className="form-actions">
+            <button className="secondary-button" onClick={() => setDeleting(null)} type="button">
+              Cancelar
+            </button>
+            <button
+              className="primary-button danger-solid-button"
+              onClick={() =>
+                runAction('Despesa apagada.', async () => {
+                  await deleteExpense(deleting.id);
+                  setDeleting(null);
+                })
+              }
+              type="button"
+            >
+              Apagar despesa
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
 
+function ExpenseForm({
+  expense,
+  onSubmit,
+  onCancel,
+}: {
+  expense: Expense | null;
+  onSubmit: (input: { description: string; category: ExpenseCategory; amount: number; occurred_at: string; notes: string }) => void;
+  onCancel: () => void;
+}) {
+  const [description, setDescription] = useState(expense?.description || '');
+  const [category, setCategory] = useState<ExpenseCategory>(expense?.category || 'almoco');
+  const [amount, setAmount] = useState(expense?.amount || 0);
+  const [date, setDate] = useState(expense ? toInputDateTime(expense.occurred_at) : toInputDateTime());
+  const [notes, setNotes] = useState(expense?.notes || '');
+
+  useEffect(() => {
+    setDescription(expense?.description || '');
+    setCategory(expense?.category || 'almoco');
+    setAmount(expense?.amount || 0);
+    setDate(expense ? toInputDateTime(expense.occurred_at) : toInputDateTime());
+    setNotes(expense?.notes || '');
+  }, [expense]);
+
+  return (
+    <form
+      className="form-grid"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit({ description, category, amount, occurred_at: fromInputDateTime(date), notes });
+      }}
+    >
+      <label>
+        Descricao
+        <input value={description} onChange={(event) => setDescription(event.target.value)} required />
+      </label>
+      <label>
+        Categoria
+        <select value={category} onChange={(event) => setCategory(event.target.value as ExpenseCategory)}>
+          {Object.entries(expenseLabels).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Valor
+        <input min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(Number(event.target.value))} type="number" required />
+      </label>
+      <label>
+        Data e hora
+        <input value={date} onChange={(event) => setDate(event.target.value)} type="datetime-local" required />
+      </label>
+      <label className="span-all">
+        Observacao
+        <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
+      </label>
+      <div className="form-actions">
+        <button className="secondary-button" onClick={onCancel} type="button">
+          Cancelar
+        </button>
+        <button className="primary-button" type="submit">
+          <Save size={18} />
+          Salvar
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function ExpenseDetails({ expense, compact = false }: { expense: Expense; compact?: boolean }) {
+  return (
+    <div className={compact ? 'detail-grid compact' : 'detail-grid'}>
+      <div>
+        <span>Descricao</span>
+        <strong>{expense.description}</strong>
+      </div>
+      <div>
+        <span>Categoria</span>
+        <strong>{expenseLabels[expense.category]}</strong>
+      </div>
+      <div>
+        <span>Valor</span>
+        <strong>{formatMoney(expense.amount)}</strong>
+      </div>
+      <div>
+        <span>Data</span>
+        <strong>{formatDateTime(expense.occurred_at)}</strong>
+      </div>
+      {expense.notes && (
+        <div>
+          <span>Observacao</span>
+          <strong>{expense.notes}</strong>
+        </div>
+      )}
+    </div>
+  );
+}
 function AdminPage({ data, runAction }: PageProps) {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -1619,9 +2045,19 @@ function AdminPage({ data, runAction }: PageProps) {
   const [companyName, setCompanyName] = useState('');
   const [companyId, setCompanyId] = useState('');
   const [userLimit, setUserLimit] = useState(3);
+  const [operatorEmail, setOperatorEmail] = useState('');
+  const [operatorName, setOperatorName] = useState('');
+  const [operatorPassword, setOperatorPassword] = useState('');
+  const isSuperAdmin = data.currentProfile?.role === 'super_admin';
+  const isOwner = data.currentProfile?.role === 'owner';
   const selectableCompanies = data.companies.filter((company) => Boolean(company.owner_id));
+  const supportCompany = data.currentProfile?.support_company_owner_id
+    ? data.companies.find((company) => company.owner_id === data.currentProfile?.support_company_owner_id) || null
+    : null;
   const owners = data.profiles.filter((profile) => profile.role === 'owner');
   const operators = data.profiles.filter((profile) => profile.role === 'operator');
+  const ownerCompany = data.companies.find((company) => company.owner_id === data.currentProfile?.id || company.id === data.currentProfile?.company_id);
+  const ownerOperators = ownerCompany ? operators.filter((profile) => profile.company_id === ownerCompany.id) : [];
   const companyOwner = (ownerId: string | null) => owners.find((profile) => profile.id === ownerId);
   const companyUsers = (id: string) => operators.filter((profile) => profile.company_id === id);
 
@@ -1634,83 +2070,190 @@ function AdminPage({ data, runAction }: PageProps) {
         <Metric icon={SlidersHorizontal} label="Limite total" value={String(data.companies.reduce((sum, company) => sum + company.user_limit, 0))} />
       </div>
 
-      <section className="panel">
-        <h2>Criar proprietario ou subusuario</h2>
-        <form
-          className="form-grid"
-          onSubmit={(event) => {
-            event.preventDefault();
-            runAction('Usuario criado.', async () => {
-              await createUser({
-                email,
-                password,
-                name,
-                role,
-                companyName,
-                companyId,
-                userLimit,
+      {isSuperAdmin && (
+        <section className="panel">
+          <div className="panel-title-row">
+            <div>
+              <h2>Suporte por empresa</h2>
+              <span className="muted-text">
+                {supportCompany ? `Voce esta atendendo ${supportCompany.name}` : 'Escolha uma empresa antes de ajustar dados operacionais'}
+              </span>
+            </div>
+            {supportCompany && (
+              <button
+                className="secondary-button"
+                onClick={() => runAction('Modo de suporte encerrado.', () => clearSupportCompany())}
+                type="button"
+              >
+                Sair do suporte
+              </button>
+            )}
+          </div>
+          <Table
+            empty="Nenhuma empresa cadastrada."
+            headers={['Empresa', 'Proprietario', 'Subusuarios', 'Suporte']}
+            rows={data.companies.map((company) => {
+              const owner = companyOwner(company.owner_id);
+              const used = companyUsers(company.id).length;
+              const active = supportCompany?.id === company.id;
+              return [
+                <strong>{company.name}</strong>,
+                owner?.name || '-',
+                `${used}/${company.user_limit}`,
+                <button
+                  className={active ? 'small-button' : 'small-button'}
+                  onClick={() => runAction(`Suporte iniciado em ${company.name}.`, () => setSupportCompany(company.id))}
+                  type="button"
+                >
+                  {active ? 'Em suporte' : 'Entrar em suporte'}
+                </button>,
+              ];
+            })}
+          />
+        </section>
+      )}
+
+      {isSuperAdmin && (
+        <section className="panel">
+          <h2>Criar proprietario ou subusuario</h2>
+          <form
+            className="form-grid"
+            onSubmit={(event) => {
+              event.preventDefault();
+              runAction('Usuario criado.', async () => {
+                await createUser({
+                  email,
+                  password,
+                  name,
+                  role,
+                  companyName,
+                  companyId,
+                  userLimit,
+                });
+                setEmail('');
+                setName('');
+                setPassword('');
+                setCompanyName('');
+                setCompanyId('');
+                setRole('owner');
               });
-              setEmail('');
-              setName('');
-              setPassword('');
-              setCompanyName('');
-              setCompanyId('');
-              setRole('owner');
-            });
-          }}
-        >
-          <label>
-            Tipo de acesso
-            <select value={role} onChange={(event) => setRole(event.target.value as 'owner' | 'operator')}>
-              <option value="owner">Proprietario</option>
-              <option value="operator">Subusuario</option>
-            </select>
-          </label>
-          {role === 'owner' && (
-            <>
-              <label>
-                Empresa
-                <input value={companyName} onChange={(event) => setCompanyName(event.target.value)} required />
-              </label>
-              <label>
-                Limite de subusuarios
-                <input min="0" value={userLimit} onChange={(event) => setUserLimit(Number(event.target.value))} type="number" required />
-              </label>
-            </>
-          )}
-          {role === 'operator' && (
+            }}
+          >
             <label>
-              Empresa
-              <select value={companyId} onChange={(event) => setCompanyId(event.target.value)} required>
-                <option value="">Selecione</option>
-                {selectableCompanies.map((company) => (
-                  <option key={company.id} value={company.id}>
-                    {company.name}
-                  </option>
-                ))}
+              Tipo de acesso
+              <select value={role} onChange={(event) => setRole(event.target.value as 'owner' | 'operator')}>
+                <option value="owner">Proprietario</option>
+                <option value="operator">Subusuario</option>
               </select>
             </label>
-          )}
-          <label>
-            Nome
-            <input value={name} onChange={(event) => setName(event.target.value)} required />
-          </label>
-          <label>
-            Email
-            <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" required />
-          </label>
-          <label>
-            Senha inicial
-            <input minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} type="password" required />
-          </label>
-          <button className="primary-button" type="submit">
-            <Plus size={18} />
-            Criar acesso
-          </button>
-        </form>
-      </section>
+            {role === 'owner' && (
+              <>
+                <label>
+                  Empresa
+                  <input value={companyName} onChange={(event) => setCompanyName(event.target.value)} required />
+                </label>
+                <label>
+                  Limite de subusuarios
+                  <input min="0" value={userLimit} onChange={(event) => setUserLimit(Number(event.target.value))} type="number" required />
+                </label>
+              </>
+            )}
+            {role === 'operator' && (
+              <label>
+                Empresa
+                <select value={companyId} onChange={(event) => setCompanyId(event.target.value)} required>
+                  <option value="">Selecione</option>
+                  {selectableCompanies.map((company) => (
+                    <option key={company.id} value={company.id}>
+                      {company.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label>
+              Nome
+              <input value={name} onChange={(event) => setName(event.target.value)} required />
+            </label>
+            <label>
+              Email
+              <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" required />
+            </label>
+            <label>
+              Senha inicial
+              <input minLength={6} value={password} onChange={(event) => setPassword(event.target.value)} type="password" required />
+            </label>
+            <button className="primary-button" type="submit">
+              <Plus size={18} />
+              Criar acesso
+            </button>
+          </form>
+        </section>
+      )}
 
-      <section className="panel">
+      {isOwner && (
+        <section className="panel">
+          <div className="panel-title-row">
+            <div>
+              <h2>Subusuarios da empresa</h2>
+              <span className="muted-text">
+                {ownerCompany ? `${ownerOperators.length}/${ownerCompany.user_limit} subusuario(s) vinculados` : 'Empresa nao encontrada'}
+              </span>
+            </div>
+          </div>
+          <form
+            className="form-grid"
+            onSubmit={(event) => {
+              event.preventDefault();
+              runAction('Subusuario criado e vinculado a empresa.', async () => {
+                await createUser({
+                  email: operatorEmail,
+                  password: operatorPassword,
+                  name: operatorName,
+                  role: 'operator',
+                });
+                setOperatorEmail('');
+                setOperatorName('');
+                setOperatorPassword('');
+              });
+            }}
+          >
+            <label>
+              Nome do subusuario
+              <input value={operatorName} onChange={(event) => setOperatorName(event.target.value)} required />
+            </label>
+            <label>
+              Email
+              <input value={operatorEmail} onChange={(event) => setOperatorEmail(event.target.value)} type="email" required />
+            </label>
+            <label>
+              Senha inicial
+              <input minLength={6} value={operatorPassword} onChange={(event) => setOperatorPassword(event.target.value)} type="password" required />
+            </label>
+            <button className="primary-button" disabled={!ownerCompany || ownerOperators.length >= (ownerCompany?.user_limit || 0)} type="submit">
+              <Plus size={18} />
+              Criar subusuario
+            </button>
+          </form>
+          <Table
+            empty="Nenhum subusuario vinculado."
+            headers={['Nome', 'Email', 'Acoes']}
+            rows={ownerOperators.map((profile) => [
+              profile.name || '-',
+              profile.email,
+              <button
+                className="small-button danger-button"
+                onClick={() => confirmAction('Remover este subusuario da empresa?', () => runAction('Subusuario removido.', () => removeOperator(profile.id)))}
+                type="button"
+              >
+                Remover
+              </button>,
+            ])}
+          />
+        </section>
+      )}
+
+      {isSuperAdmin && <section className="panel">
         <h2>Empresas, proprietarios e limites</h2>
         <Table
           empty="Nenhuma empresa cadastrada."
@@ -1734,9 +2277,9 @@ function AdminPage({ data, runAction }: PageProps) {
             ];
           })}
         />
-      </section>
+      </section>}
 
-      <section className="panel">
+      {isSuperAdmin && <section className="panel">
         <h2>Usuarios criados</h2>
         <Table
           empty="Nenhum usuario encontrado."
@@ -1758,49 +2301,127 @@ function AdminPage({ data, runAction }: PageProps) {
             </select>,
           ])}
         />
-      </section>
+      </section>}
     </div>
   );
 }
 
-function ContactsPage({ type, data, runAction }: PageProps & { type: 'suppliers' | 'customers' }) {
+function ContactsPage({ type, data, runAction, canManage }: PageProps & { type: 'suppliers' | 'customers'; canManage: boolean }) {
   const [editing, setEditing] = useState<Supplier | Customer | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [viewing, setViewing] = useState<Supplier | Customer | null>(null);
+  const [deleting, setDeleting] = useState<Supplier | Customer | null>(null);
   const [query, setQuery] = useState('');
   const contacts = type === 'suppliers' ? data.suppliers : data.customers;
   const filtered = filterBy(contacts, query, (contact) => `${contact.name} ${contact.phone || ''} ${contact.document || ''}`);
   const title = type === 'suppliers' ? 'Fornecedor' : 'Cliente';
+  const closeContactModal = () => {
+    setCreating(false);
+    setEditing(null);
+  };
 
   return (
-    <div className="two-column">
+    <div className="admin-layout">
       <section className="panel">
-        <h2>{editing ? `Editar ${title.toLowerCase()}` : `Novo ${title.toLowerCase()}`}</h2>
-        <ContactForm
-          contact={editing}
-          onCancel={() => setEditing(null)}
-          onSubmit={(input) =>
-            runAction(`${title} salvo.`, async () => {
-              if (type === 'suppliers') await saveSupplier(input, editing?.id);
-              else await saveCustomer(input, editing?.id);
-              setEditing(null);
-            })
-          }
-        />
-      </section>
-      <section className="panel">
+        <div className="panel-title-row">
+          <div>
+            <h2>{type === 'suppliers' ? 'Fornecedores' : 'Clientes'}</h2>
+            <span className="muted-text">{filtered.length} registro(s) encontrado(s)</span>
+          </div>
+          <button className="primary-button" onClick={() => setCreating(true)} type="button">
+            <Plus size={18} />
+            Novo {title.toLowerCase()}
+          </button>
+        </div>
         <PanelSearch value={query} onChange={setQuery} placeholder={`Buscar ${title.toLowerCase()}`} />
         <Table
           empty={`Nenhum ${title.toLowerCase()} cadastrado.`}
-          headers={[title, 'Telefone', 'Documento', '']}
+          headers={[title, 'Telefone', 'Documento', 'Acoes']}
           rows={filtered.map((contact) => [
             <strong>{contact.name}</strong>,
             contact.phone || '-',
             contact.document || '-',
-            <button className="small-button" onClick={() => setEditing(contact)} type="button">
-              Editar
-            </button>,
+            <div className="row-actions">
+              <button className="small-button" onClick={() => setViewing(contact)} type="button">
+                Ver
+              </button>
+              <button className="small-button" onClick={() => setEditing(contact)} type="button">
+                Editar
+              </button>
+              {canManage && (
+                <button className="small-button danger-button" onClick={() => setDeleting(contact)} type="button">
+                  Apagar
+                </button>
+              )}
+            </div>,
           ])}
         />
       </section>
+
+      {(creating || editing) && (
+        <Modal title={editing ? `Editar ${title.toLowerCase()}` : `Novo ${title.toLowerCase()}`} onClose={closeContactModal}>
+          <ContactForm
+            contact={editing}
+            onCancel={closeContactModal}
+            onSubmit={(input) =>
+              runAction(`${title} salvo.`, async () => {
+                if (type === 'suppliers') await saveSupplier(input, editing?.id);
+                else await saveCustomer(input, editing?.id);
+                closeContactModal();
+              })
+            }
+          />
+        </Modal>
+      )}
+
+      {viewing && (
+        <Modal title={`Detalhes do ${title.toLowerCase()}`} onClose={() => setViewing(null)}>
+          <ContactDetails contact={viewing} />
+          <div className="form-actions">
+            <button className="secondary-button" onClick={() => setViewing(null)} type="button">
+              Fechar
+            </button>
+            <button
+              className="primary-button"
+              onClick={() => {
+                setEditing(viewing);
+                setViewing(null);
+              }}
+              type="button"
+            >
+              <Save size={18} />
+              Editar {title.toLowerCase()}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {deleting && (
+        <Modal title={`Apagar ${title.toLowerCase()}`} onClose={() => setDeleting(null)}>
+          <div className="notice danger">
+            Apagar este {title.toLowerCase()}? Se houver registros vinculados, o Supabase pode bloquear para preservar o historico.
+          </div>
+          <ContactDetails contact={deleting} compact />
+          <div className="form-actions">
+            <button className="secondary-button" onClick={() => setDeleting(null)} type="button">
+              Cancelar
+            </button>
+            <button
+              className="primary-button danger-solid-button"
+              onClick={() =>
+                runAction(`${title} apagado.`, async () => {
+                  if (type === 'suppliers') await deleteSupplier(deleting.id);
+                  else await deleteCustomer(deleting.id);
+                  setDeleting(null);
+                })
+              }
+              type="button"
+            >
+              Apagar {title.toLowerCase()}
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -1862,6 +2483,31 @@ function ContactForm({
         </button>
       </div>
     </form>
+  );
+}
+
+function ContactDetails({ contact, compact = false }: { contact: Supplier | Customer; compact?: boolean }) {
+  return (
+    <div className={compact ? 'detail-grid compact' : 'detail-grid'}>
+      <div>
+        <span>Nome</span>
+        <strong>{contact.name}</strong>
+      </div>
+      <div>
+        <span>Telefone</span>
+        <strong>{contact.phone || '-'}</strong>
+      </div>
+      <div>
+        <span>Documento</span>
+        <strong>{contact.document || '-'}</strong>
+      </div>
+      {contact.notes && (
+        <div>
+          <span>Observacoes</span>
+          <strong>{contact.notes}</strong>
+        </div>
+      )}
+    </div>
   );
 }
 

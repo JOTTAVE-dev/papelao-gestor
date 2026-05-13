@@ -20,6 +20,7 @@ create table if not exists public.profiles (
 );
 
 alter table public.profiles add column if not exists company_id uuid references public.companies(id) on delete set null;
+alter table public.profiles add column if not exists support_company_owner_id uuid references auth.users(id) on delete set null;
 alter table public.profiles alter column role set default 'operator';
 alter table public.profiles drop constraint if exists profiles_role_check;
 
@@ -53,6 +54,14 @@ security definer
 set search_path = public
 as $$
   select coalesce(
+    (
+      select case
+        when role = 'super_admin' and support_company_owner_id is not null then support_company_owner_id
+        else company_owner_id
+      end
+      from public.profiles
+      where id = auth.uid()
+    ),
     (select company_owner_id from public.profiles where id = auth.uid()),
     auth.uid()
   )
@@ -216,9 +225,11 @@ drop policy if exists "sales_insert_own" on public.sales;
 drop policy if exists "sales_delete_own" on public.sales;
 drop policy if exists "sales_select_company" on public.sales;
 drop policy if exists "sales_insert_company" on public.sales;
+drop policy if exists "sales_update_admin" on public.sales;
 drop policy if exists "sales_delete_admin" on public.sales;
 drop policy if exists "expenses_select_own" on public.expenses;
 drop policy if exists "expenses_insert_own" on public.expenses;
+drop policy if exists "expenses_update_company" on public.expenses;
 drop policy if exists "expenses_delete_own" on public.expenses;
 drop policy if exists "expenses_select_company" on public.expenses;
 drop policy if exists "expenses_insert_company" on public.expenses;
@@ -245,10 +256,12 @@ create policy "stock_entries_delete_admin" on public.stock_entries for delete us
 
 create policy "sales_select_company" on public.sales for select using (public.current_user_is_super_admin() or owner_id = public.current_company_owner_id());
 create policy "sales_insert_company" on public.sales for insert with check (owner_id = public.current_company_owner_id());
+create policy "sales_update_admin" on public.sales for update using (public.can_manage_owner_records(owner_id)) with check (public.can_manage_owner_records(owner_id));
 create policy "sales_delete_admin" on public.sales for delete using (public.can_manage_owner_records(owner_id));
 
 create policy "expenses_select_company" on public.expenses for select using (public.current_user_is_super_admin() or owner_id = public.current_company_owner_id());
 create policy "expenses_insert_company" on public.expenses for insert with check (owner_id = public.current_company_owner_id());
+create policy "expenses_update_company" on public.expenses for update using (owner_id = public.current_company_owner_id()) with check (owner_id = public.current_company_owner_id());
 create policy "expenses_delete_admin" on public.expenses for delete using (public.can_manage_owner_records(owner_id));
 
 create or replace function public.create_stock_entry(
@@ -420,6 +433,165 @@ begin
 end;
 $$;
 
+create or replace function public.super_admin_set_support_company(p_company_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_company public.companies%rowtype;
+begin
+  if not public.current_user_is_super_admin() then
+    raise exception 'Apenas o admin geral pode iniciar suporte por empresa.';
+  end if;
+
+  select * into v_company
+    from public.companies
+   where id = p_company_id;
+
+  if v_company.id is null or v_company.owner_id is null then
+    raise exception 'Empresa invalida para suporte.';
+  end if;
+
+  update public.profiles
+     set support_company_owner_id = v_company.owner_id
+   where id = auth.uid();
+end;
+$$;
+
+create or replace function public.super_admin_clear_support_company()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.current_user_is_super_admin() then
+    raise exception 'Apenas o admin geral pode encerrar suporte por empresa.';
+  end if;
+
+  update public.profiles
+     set support_company_owner_id = null
+   where id = auth.uid();
+end;
+$$;
+
+create or replace function public.owner_attach_existing_operator(p_email text, p_name text)
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_owner_id uuid := auth.uid();
+  v_company public.companies%rowtype;
+  v_user auth.users%rowtype;
+  v_existing public.profiles%rowtype;
+  v_operator_count integer;
+  v_name text := nullif(trim(p_name), '');
+  v_email text := lower(trim(p_email));
+begin
+  if not public.current_user_is_owner() then
+    raise exception 'Apenas proprietarios podem vincular subusuarios.';
+  end if;
+
+  select * into v_company
+    from public.companies
+   where owner_id = v_owner_id;
+
+  if v_company.id is null then
+    raise exception 'Empresa do proprietario nao encontrada.';
+  end if;
+
+  select * into v_user
+    from auth.users
+   where lower(email) = v_email;
+
+  if v_user.id is null then
+    raise exception 'Usuario nao encontrado no Authentication. Crie o usuario primeiro.';
+  end if;
+
+  if v_user.id = v_owner_id then
+    raise exception 'O proprietario nao pode ser vinculado como subusuario.';
+  end if;
+
+  select * into v_existing
+    from public.profiles
+   where id = v_user.id;
+
+  if v_existing.id is not null and v_existing.role in ('super_admin', 'owner') then
+    raise exception 'Este usuario nao pode ser vinculado como subusuario.';
+  end if;
+
+  if v_existing.id is not null and v_existing.company_id is not null and v_existing.company_id <> v_company.id then
+    raise exception 'Este usuario ja esta vinculado a outra empresa.';
+  end if;
+
+  select count(*) into v_operator_count
+    from public.profiles
+   where company_id = v_company.id
+     and role = 'operator'
+     and id <> v_user.id;
+
+  if v_operator_count >= v_company.user_limit then
+    raise exception 'Limite de subusuarios atingido para esta empresa.';
+  end if;
+
+  insert into public.profiles (id, email, name, role, company_owner_id, company_id)
+  values (
+    v_user.id,
+    v_user.email,
+    coalesce(v_name, v_user.raw_user_meta_data->>'name', v_user.email),
+    'operator',
+    v_owner_id,
+    v_company.id
+  )
+  on conflict (id) do update
+    set email = excluded.email,
+        name = excluded.name,
+        role = 'operator',
+        company_owner_id = excluded.company_owner_id,
+        company_id = excluded.company_id;
+end;
+$$;
+
+create or replace function public.owner_remove_operator(p_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_owner_id uuid := auth.uid();
+  v_company public.companies%rowtype;
+begin
+  if not public.current_user_is_owner() then
+    raise exception 'Apenas proprietarios podem remover subusuarios.';
+  end if;
+
+  select * into v_company
+    from public.companies
+   where owner_id = v_owner_id;
+
+  if v_company.id is null then
+    raise exception 'Empresa do proprietario nao encontrada.';
+  end if;
+
+  update public.profiles
+     set company_id = null,
+         company_owner_id = id,
+         role = 'operator'
+   where id = p_user_id
+     and company_id = v_company.id
+     and role = 'operator';
+
+  if not found then
+    raise exception 'Subusuario nao encontrado nesta empresa.';
+  end if;
+end;
+$$;
+
 create or replace function public.admin_update_stock_entry(
   p_entry_id uuid,
   p_product_id uuid,
@@ -542,6 +714,92 @@ begin
 end;
 $$;
 
+create or replace function public.admin_update_sale(
+  p_sale_id uuid,
+  p_product_id uuid,
+  p_customer_id uuid,
+  p_weight_kg numeric,
+  p_unit_price numeric,
+  p_total_price numeric,
+  p_occurred_at timestamptz,
+  p_notes text
+) returns void
+language plpgsql
+as $$
+declare
+  v_sale public.sales%rowtype;
+  v_new_stock numeric;
+begin
+  if p_weight_kg <= 0 then
+    raise exception 'Peso da venda deve ser maior que zero.';
+  end if;
+
+  select * into v_sale
+    from public.sales
+   where id = p_sale_id
+     and public.can_manage_owner_records(owner_id)
+   for update;
+
+  if v_sale.id is null then
+    raise exception 'Venda nao encontrada.';
+  end if;
+
+  if not exists (select 1 from public.customers where id = p_customer_id and owner_id = v_sale.owner_id) then
+    raise exception 'Cliente invalido.';
+  end if;
+
+  if not exists (
+    select 1
+      from public.products
+     where id = p_product_id
+       and owner_id = v_sale.owner_id
+       and (active = true or id = v_sale.product_id)
+  ) then
+    raise exception 'Produto invalido ou inativo.';
+  end if;
+
+  if p_product_id = v_sale.product_id then
+    update public.products
+       set stock_kg = stock_kg + v_sale.weight_kg - p_weight_kg,
+           updated_at = now()
+     where id = p_product_id
+       and owner_id = v_sale.owner_id
+     returning stock_kg into v_new_stock;
+
+    if v_new_stock < 0 then
+      raise exception 'Nao e possivel editar: estoque ficaria negativo.';
+    end if;
+  else
+    update public.products
+       set stock_kg = stock_kg + v_sale.weight_kg,
+           updated_at = now()
+     where id = v_sale.product_id
+       and owner_id = v_sale.owner_id;
+
+    update public.products
+       set stock_kg = stock_kg - p_weight_kg,
+           updated_at = now()
+     where id = p_product_id
+       and owner_id = v_sale.owner_id
+     returning stock_kg into v_new_stock;
+
+    if v_new_stock < 0 then
+      raise exception 'Estoque insuficiente para esta venda.';
+    end if;
+  end if;
+
+  update public.sales
+     set product_id = p_product_id,
+         customer_id = p_customer_id,
+         weight_kg = p_weight_kg,
+         unit_price = p_unit_price,
+         total_price = p_total_price,
+         occurred_at = p_occurred_at,
+         notes = p_notes
+   where id = p_sale_id;
+end;
+$$;
+
 create or replace function public.admin_delete_sale(p_sale_id uuid)
 returns void
 language plpgsql
@@ -614,7 +872,12 @@ grant execute on function public.current_user_is_admin() to authenticated;
 grant execute on function public.can_manage_owner_records(uuid) to authenticated;
 grant execute on function public.admin_update_user_role(uuid, text) to authenticated;
 grant execute on function public.super_admin_update_company_limit(uuid, integer) to authenticated;
+grant execute on function public.super_admin_set_support_company(uuid) to authenticated;
+grant execute on function public.super_admin_clear_support_company() to authenticated;
+grant execute on function public.owner_attach_existing_operator(text, text) to authenticated;
+grant execute on function public.owner_remove_operator(uuid) to authenticated;
 grant execute on function public.admin_update_stock_entry(uuid, uuid, uuid, numeric, numeric, numeric, timestamptz, text) to authenticated;
+grant execute on function public.admin_update_sale(uuid, uuid, uuid, numeric, numeric, numeric, timestamptz, text) to authenticated;
 grant execute on function public.admin_delete_stock_entry(uuid) to authenticated;
 grant execute on function public.admin_delete_sale(uuid) to authenticated;
 grant execute on function public.admin_delete_expense(uuid) to authenticated;

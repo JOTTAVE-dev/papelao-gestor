@@ -88,6 +88,7 @@ export type Profile = {
   role: UserRole;
   company_owner_id: string;
   company_id: string | null;
+  support_company_owner_id?: string | null;
   created_at: string;
 };
 

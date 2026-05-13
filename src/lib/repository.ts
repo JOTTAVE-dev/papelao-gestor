@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase, supabaseAnonKey, supabaseUrl } from './supabase';
 import type {
   AppData,
   BackupPayload,
@@ -149,6 +149,18 @@ export async function saveCustomer(input: ContactInput, id?: string) {
   await saveContact('customers', input, id);
 }
 
+export async function deleteSupplier(id: string) {
+  const ownerId = await requireCompanyOwnerId();
+  const { error } = await supabase.from('suppliers').delete().eq('owner_id', ownerId).eq('id', id);
+  if (error) raise(error);
+}
+
+export async function deleteCustomer(id: string) {
+  const ownerId = await requireCompanyOwnerId();
+  const { error } = await supabase.from('customers').delete().eq('owner_id', ownerId).eq('id', id);
+  if (error) raise(error);
+}
+
 export async function createSupplier(input: ContactInput) {
   const ownerId = await requireCompanyOwnerId();
   const { data, error } = await supabase
@@ -265,22 +277,49 @@ export async function createSale(input: {
   if (error) raise(error);
 }
 
+export async function updateSale(
+  id: string,
+  input: {
+    product_id: string;
+    customer_id: string;
+    weight_kg: number;
+    unit_price: number;
+    total_price: number;
+    occurred_at: string;
+    notes: string;
+  },
+) {
+  const { error } = await supabase.rpc('admin_update_sale', {
+    p_sale_id: id,
+    p_product_id: input.product_id,
+    p_customer_id: input.customer_id,
+    p_weight_kg: input.weight_kg,
+    p_unit_price: input.unit_price,
+    p_total_price: input.total_price,
+    p_occurred_at: input.occurred_at,
+    p_notes: cleanText(input.notes),
+  });
+  if (error) raise(error);
+}
+
 export async function saveExpense(input: {
   description: string;
   category: ExpenseCategory;
   amount: number;
   occurred_at: string;
   notes: string;
-}) {
+}, id?: string) {
   const ownerId = await requireCompanyOwnerId();
-  const { error } = await supabase.from('expenses').insert({
+  const payload = {
     owner_id: ownerId,
     description: input.description.trim(),
     category: input.category,
     amount: input.amount,
     occurred_at: input.occurred_at,
     notes: cleanText(input.notes),
-  });
+  };
+  const query = id ? supabase.from('expenses').update(payload).eq('owner_id', ownerId).eq('id', id) : supabase.from('expenses').insert(payload);
+  const { error } = await query;
   if (error) raise(error);
 }
 
@@ -336,10 +375,37 @@ export async function createUser(input: {
   companyId?: string;
   userLimit?: number;
 }) {
-  const { error } = await supabase.functions.invoke('create-user', {
-    body: input,
-  });
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no arquivo .env.');
+  }
+
+  const { data, error } = await supabase.auth.getSession();
   if (error) raise(error);
+  if (!data.session?.access_token) {
+    throw new Error('Sessao expirada. Entre novamente.');
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/functions/v1/create-user`, {
+      method: 'POST',
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${data.session.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(input),
+    });
+  } catch {
+    throw new Error(
+      'Nao foi possivel acessar a Edge Function create-user. Verifique se ela foi publicada no Supabase e se as secrets SUPABASE_URL, SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY estao configuradas.',
+    );
+  }
+
+  const result = await response.json().catch(() => null) as { error?: string } | null;
+  if (!response.ok) {
+    throw new Error(result?.error || `Erro ao criar usuario. Status ${response.status}.`);
+  }
 }
 
 export async function updateUserRole(userId: string, role: 'owner' | 'operator') {
@@ -350,11 +416,38 @@ export async function updateUserRole(userId: string, role: 'owner' | 'operator')
   if (error) raise(error);
 }
 
+export async function attachExistingOperator(input: { email: string; name: string }) {
+  const { error } = await supabase.rpc('owner_attach_existing_operator', {
+    p_email: input.email.trim().toLowerCase(),
+    p_name: input.name.trim(),
+  });
+  if (error) raise(error);
+}
+
+export async function removeOperator(userId: string) {
+  const { error } = await supabase.rpc('owner_remove_operator', {
+    p_user_id: userId,
+  });
+  if (error) raise(error);
+}
+
 export async function updateCompanyLimit(companyId: string, userLimit: number) {
   const { error } = await supabase.rpc('super_admin_update_company_limit', {
     p_company_id: companyId,
     p_user_limit: userLimit,
   });
+  if (error) raise(error);
+}
+
+export async function setSupportCompany(companyId: string) {
+  const { error } = await supabase.rpc('super_admin_set_support_company', {
+    p_company_id: companyId,
+  });
+  if (error) raise(error);
+}
+
+export async function clearSupportCompany() {
+  const { error } = await supabase.rpc('super_admin_clear_support_company');
   if (error) raise(error);
 }
 
