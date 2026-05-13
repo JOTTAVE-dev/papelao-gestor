@@ -933,27 +933,30 @@ function VoicePage({ data, runAction }: PageProps) {
 
 function ProductsPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean }) {
   const [editing, setEditing] = useState<Product | null>(null);
+  const [viewing, setViewing] = useState<Product | null>(null);
+  const [deleting, setDeleting] = useState<Product | null>(null);
+  const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState('');
   const filtered = filterBy(data.products, query, (product) => `${product.name} ${product.category}`);
+  const closeProductModal = () => {
+    setCreating(false);
+    setEditing(null);
+  };
 
   return (
-    <div className="two-column">
+    <div className="admin-layout">
       <section className="panel">
-        <h2>{editing ? 'Editar produto' : 'Novo produto'}</h2>
-        <ProductForm
-          product={editing}
-          products={data.products}
-          onCancel={() => setEditing(null)}
-          onSubmit={(input) =>
-            runAction('Produto salvo.', async () => {
-              await saveProduct(input, editing?.id);
-              setEditing(null);
-            })
-          }
-        />
-      </section>
-      <section className="panel">
-        <PanelSearch value={query} onChange={setQuery} placeholder="Buscar produto" />
+        <div className="panel-title-row">
+          <div>
+            <h2>Produtos cadastrados</h2>
+            <span className="muted-text">{filtered.length} produto(s) encontrado(s)</span>
+          </div>
+          <button className="primary-button" onClick={() => setCreating(true)} type="button">
+            <Plus size={18} />
+            Novo produto
+          </button>
+        </div>
+        <PanelSearch value={query} onChange={setQuery} placeholder="Buscar produto por nome ou categoria" />
         <Table
           empty="Nenhum produto cadastrado."
           headers={isAdmin ? ['Produto', 'Preco/kg', 'Estoque', 'Minimo', 'Status', 'Ações'] : ['Produto', 'Preco/kg', 'Estoque', 'Minimo', 'Status', '']}
@@ -964,18 +967,16 @@ function ProductsPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boole
             formatKg(product.min_stock_kg),
             product.active ? 'Ativo' : 'Inativo',
             <div className="row-actions">
+              <button className="small-button" onClick={() => setViewing(product)} type="button">
+                Ver
+              </button>
               <button className="small-button" onClick={() => setEditing(product)} type="button">
                 Editar
               </button>
               {isAdmin && (
                 <button
                   className="small-button danger-button"
-                  onClick={() =>
-                    confirmAction(
-                      'Apagar este produto? Isso só será permitido se ele não tiver entradas ou vendas.',
-                      () => runAction('Produto apagado.', () => deleteProduct(product.id)),
-                    )
-                  }
+                  onClick={() => setDeleting(product)}
                   type="button"
                 >
                   Apagar
@@ -985,6 +986,104 @@ function ProductsPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boole
           ])}
         />
       </section>
+
+      {(creating || editing) && (
+        <Modal title={editing ? 'Editar produto' : 'Novo produto'} onClose={closeProductModal}>
+          <ProductForm
+            product={editing}
+            products={data.products}
+            onCancel={closeProductModal}
+            onSubmit={(input) =>
+              runAction('Produto salvo.', async () => {
+                await saveProduct(input, editing?.id);
+                closeProductModal();
+              })
+            }
+          />
+        </Modal>
+      )}
+
+      {viewing && (
+        <Modal title="Detalhes do produto" onClose={() => setViewing(null)}>
+          <div className="detail-grid">
+            <div>
+              <span>Produto</span>
+              <strong>{viewing.name}</strong>
+            </div>
+            <div>
+              <span>Categoria</span>
+              <strong>{viewing.category}</strong>
+            </div>
+            <div>
+              <span>Preco por kg</span>
+              <strong>{formatMoney(viewing.price_per_kg)}</strong>
+            </div>
+            <div>
+              <span>Estoque atual</span>
+              <strong>{formatKg(viewing.stock_kg)}</strong>
+            </div>
+            <div>
+              <span>Estoque minimo</span>
+              <strong>{formatKg(viewing.min_stock_kg)}</strong>
+            </div>
+            <div>
+              <span>Status</span>
+              <strong>{viewing.active ? 'Ativo' : 'Inativo'}</strong>
+            </div>
+          </div>
+          <div className="form-actions">
+            <button className="secondary-button" onClick={() => setViewing(null)} type="button">
+              Fechar
+            </button>
+            <button
+              className="primary-button"
+              onClick={() => {
+                setEditing(viewing);
+                setViewing(null);
+              }}
+              type="button"
+            >
+              <Save size={18} />
+              Editar produto
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {deleting && (
+        <Modal title="Apagar produto" onClose={() => setDeleting(null)}>
+          <div className="notice danger">
+            Apagar este produto? Isso so sera permitido se ele nao tiver entradas ou vendas.
+          </div>
+          <div className="detail-grid compact">
+            <div>
+              <span>Produto</span>
+              <strong>{deleting.name}</strong>
+            </div>
+            <div>
+              <span>Estoque</span>
+              <strong>{formatKg(deleting.stock_kg)}</strong>
+            </div>
+          </div>
+          <div className="form-actions">
+            <button className="secondary-button" onClick={() => setDeleting(null)} type="button">
+              Cancelar
+            </button>
+            <button
+              className="primary-button danger-solid-button"
+              onClick={() =>
+                runAction('Produto apagado.', async () => {
+                  await deleteProduct(deleting.id);
+                  setDeleting(null);
+                })
+              }
+              type="button"
+            >
+              Apagar produto
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -1700,6 +1799,28 @@ function Select({
         ))}
       </select>
     </label>
+  );
+}
+
+function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <section
+        className="modal-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="modal-header">
+          <h2>{title}</h2>
+          <button className="icon-button" onClick={onClose} title="Fechar" type="button">
+            <X size={18} />
+          </button>
+        </div>
+        {children}
+      </section>
+    </div>
   );
 }
 

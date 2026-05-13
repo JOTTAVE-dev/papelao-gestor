@@ -313,6 +313,11 @@ textarea:focus {
   color: #a93e36;
 }
 
+.danger-solid-button {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
 .login-divider {
   align-items: center;
   color: #a2aaa7;
@@ -793,6 +798,13 @@ nav {
   margin-bottom: 16px;
 }
 
+.muted-text {
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 0.86rem;
+  font-weight: 760;
+}
+
 .span-2 {
   grid-column: span 2;
 }
@@ -1132,6 +1144,73 @@ tr:hover td {
 .admin-layout {
   display: grid;
   gap: 18px;
+}
+
+.modal-backdrop {
+  align-items: center;
+  background: rgba(18, 26, 24, 0.48);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 22px;
+  position: fixed;
+  z-index: 50;
+}
+
+.modal-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 24px 70px rgba(10, 18, 16, 0.24);
+  max-height: min(88vh, 760px);
+  max-width: 760px;
+  overflow: auto;
+  padding: 22px;
+  width: min(100%, 760px);
+}
+
+.modal-header {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.modal-header h2 {
+  margin: 0;
+}
+
+.detail-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.detail-grid.compact {
+  grid-template-columns: 1fr;
+}
+
+.detail-grid div {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+}
+
+.detail-grid span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.detail-grid strong {
+  color: var(--text);
+  font-size: 1rem;
 }
 
 .voice-panel {
