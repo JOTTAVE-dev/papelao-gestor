@@ -273,7 +273,7 @@ export default function App() {
   }
 
   return (
-    <div className={sidebarExpanded ? 'shell sidebar-expanded' : 'shell sidebar-collapsed'}>
+    <div className={`${sidebarExpanded ? 'shell sidebar-expanded' : 'shell sidebar-collapsed'} page-${page}`}>
       <aside
         className={sidebarExpanded ? 'sidebar expanded' : 'sidebar collapsed'}
         onMouseEnter={() => setSidebarHovered(true)}
