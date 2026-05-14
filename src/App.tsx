@@ -142,6 +142,7 @@ const navItems = [
   { page: 'sales' as Page, label: 'Vendas', icon: ShoppingCart },
   { page: 'voice' as Page, label: 'Lançar por Áudio', icon: Mic },
   { page: 'expenses' as Page, label: 'Despesas', icon: ReceiptText },
+  { page: 'reports' as Page, label: 'Relatorios', icon: ReceiptText },
   { page: 'suppliers' as Page, label: 'Fornecedores', icon: Truck },
   { page: 'customers' as Page, label: 'Clientes', icon: Users },
   { page: 'admin' as Page, label: 'Admin', icon: ShieldCheck },
@@ -381,7 +382,7 @@ export default function App() {
             {isSuperAdmin && supportCompany && <span className="muted-text">Suporte ativo em: {supportCompany.name}</span>}
           </div>
           <div className="heading-actions">
-            <button className="secondary-button" type="button" onClick={() => setPage('backup')}>
+            <button className="secondary-button" type="button" onClick={() => setPage('reports')}>
               <ReceiptText size={17} />
               Relatório
             </button>
@@ -412,6 +413,7 @@ export default function App() {
             {page === 'suppliers' && <ContactsPage type="suppliers" data={scopedData} runAction={runAction} canManage={canManageRecords} />}
             {page === 'customers' && <ContactsPage type="customers" data={scopedData} runAction={runAction} canManage={canManageRecords} />}
             {page === 'admin' && canOpenAdmin && <AdminPage data={data} runAction={runAction} />}
+            {page === 'reports' && <ReportsPage data={scopedData} />}
           </>
         )}
         {page === 'backup' && <BackupPage runAction={runAction} />}
@@ -2675,6 +2677,204 @@ function ContactDetails({ contact, compact = false }: { contact: Supplier | Cust
           <strong>{contact.notes}</strong>
         </div>
       )}
+    </div>
+  );
+}
+
+function ReportsPage({ data }: { data: AppData }) {
+  const today = new Date();
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+  const todayInput = today.toISOString().slice(0, 10);
+  const [startDate, setStartDate] = useState(monthStart);
+  const [endDate, setEndDate] = useState(todayInput);
+
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T23:59:59.999`);
+  const inPeriod = (value: string) => {
+    const date = new Date(value);
+    return date >= start && date <= end;
+  };
+
+  const sales = data.sales.filter((sale) => inPeriod(sale.occurred_at));
+  const expenses = data.expenses.filter((expense) => inPeriod(expense.occurred_at));
+  const entries = data.entries.filter((entry) => inPeriod(entry.occurred_at));
+  const totalSales = sales.reduce((sum, sale) => sum + sale.total_price, 0);
+  const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const soldKg = sales.reduce((sum, sale) => sum + sale.weight_kg, 0);
+  const entryKg = entries.reduce((sum, entry) => sum + entry.weight_kg, 0);
+  const lowStock = data.products.filter((product) => product.active && product.stock_kg <= product.min_stock_kg);
+  const averageTicket = sales.length ? totalSales / sales.length : 0;
+
+  const salesRows = [...sales]
+    .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
+    .map((sale) => [
+      formatDateTime(sale.occurred_at),
+      productName(data, sale.product_id),
+      customerName(data, sale.customer_id),
+      formatKg(sale.weight_kg),
+      formatMoney(sale.total_price),
+    ]);
+  const expenseRows = [...expenses]
+    .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
+    .map((expense) => [
+      formatDateTime(expense.occurred_at),
+      expenseLabels[expense.category] || expense.category,
+      expense.description,
+      formatMoney(expense.amount),
+    ]);
+  const stockRows = [...data.products]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((product) => [
+      product.name,
+      product.category,
+      formatKg(product.stock_kg),
+      formatKg(product.min_stock_kg),
+      product.stock_kg <= product.min_stock_kg ? 'Baixo' : 'OK',
+    ]);
+
+  function setPreset(preset: 'today' | 'week' | 'month') {
+    const now = new Date();
+    const startPreset = new Date(now);
+    if (preset === 'today') startPreset.setHours(0, 0, 0, 0);
+    if (preset === 'week') startPreset.setDate(now.getDate() - 6);
+    if (preset === 'month') startPreset.setDate(1);
+    setStartDate(startPreset.toISOString().slice(0, 10));
+    setEndDate(now.toISOString().slice(0, 10));
+  }
+
+  function download(filename: string, content: string, type: string) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function toCsv(rows: string[][]) {
+    return rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(';')).join('\n');
+  }
+
+  function exportCsv() {
+    const rows = [
+      ['Relatorio RODPEL', `${startDate} ate ${endDate}`],
+      [],
+      ['Resumo'],
+      ['Vendas', formatMoney(totalSales)],
+      ['Despesas', formatMoney(totalExpenses)],
+      ['Saldo', formatMoney(totalSales - totalExpenses)],
+      ['Kg vendidos', formatKg(soldKg)],
+      ['Ticket medio', formatMoney(averageTicket)],
+      [],
+      ['Vendas'],
+      ['Data', 'Produto', 'Cliente', 'Peso', 'Valor'],
+      ...salesRows.map((row) => row.map(String)),
+      [],
+      ['Despesas'],
+      ['Data', 'Categoria', 'Descricao', 'Valor'],
+      ...expenseRows.map((row) => row.map(String)),
+      [],
+      ['Estoque'],
+      ['Produto', 'Categoria', 'Estoque', 'Minimo', 'Status'],
+      ...stockRows.map((row) => row.map(String)),
+    ];
+    download(`relatorio-rodpel-${startDate}-${endDate}.csv`, toCsv(rows), 'text/csv;charset=utf-8');
+  }
+
+  function exportExcel() {
+    const escapeHtml = (value: ReactNode) =>
+      String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    const table = (title: string, headers: string[], rows: ReactNode[][]) => `
+      <h2>${title}</h2>
+      <table border="1"><thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table>
+    `;
+    const html = `
+      <html><head><meta charset="utf-8" /></head><body>
+      <h1>Relatorio RODPEL</h1>
+      <p>Periodo: ${startDate} ate ${endDate}</p>
+      ${table('Resumo', ['Indicador', 'Valor'], [
+        ['Vendas', formatMoney(totalSales)],
+        ['Despesas', formatMoney(totalExpenses)],
+        ['Saldo', formatMoney(totalSales - totalExpenses)],
+        ['Kg vendidos', formatKg(soldKg)],
+        ['Kg recebidos', formatKg(entryKg)],
+        ['Ticket medio', formatMoney(averageTicket)],
+      ])}
+      ${table('Vendas', ['Data', 'Produto', 'Cliente', 'Peso', 'Valor'], salesRows)}
+      ${table('Despesas', ['Data', 'Categoria', 'Descricao', 'Valor'], expenseRows)}
+      ${table('Estoque', ['Produto', 'Categoria', 'Estoque', 'Minimo', 'Status'], stockRows)}
+      </body></html>
+    `;
+    download(`relatorio-rodpel-${startDate}-${endDate}.xls`, html, 'application/vnd.ms-excel;charset=utf-8');
+  }
+
+  return (
+    <div className="reports-page">
+      <section className="panel report-controls">
+        <div>
+          <h2>Relatorio por periodo</h2>
+          <p className="muted-paragraph">Vendas, despesas e estoque usando somente os dados da empresa atual.</p>
+        </div>
+        <div className="report-filter-grid">
+          <label>
+            Inicio
+            <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+          </label>
+          <label>
+            Fim
+            <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+          </label>
+          <div className="report-presets">
+            <button className="small-button" type="button" onClick={() => setPreset('today')}>Hoje</button>
+            <button className="small-button" type="button" onClick={() => setPreset('week')}>7 dias</button>
+            <button className="small-button" type="button" onClick={() => setPreset('month')}>Mes</button>
+          </div>
+        </div>
+        <div className="report-export-actions">
+          <button className="secondary-button" type="button" onClick={() => window.print()}>
+            <ReceiptText size={17} />
+            Gerar PDF
+          </button>
+          <button className="secondary-button" type="button" onClick={exportCsv}>
+            <Download size={17} />
+            CSV
+          </button>
+          <button className="primary-button" type="button" onClick={exportExcel}>
+            <Download size={17} />
+            Excel
+          </button>
+        </div>
+      </section>
+
+      <div className="content-grid report-summary">
+        <Metric icon={CircleDollarSign} label="Vendas" value={formatMoney(totalSales)} />
+        <Metric icon={ReceiptText} label="Despesas" value={formatMoney(totalExpenses)} />
+        <Metric icon={Archive} label="Saldo" value={formatMoney(totalSales - totalExpenses)} />
+        <Metric icon={Boxes} label="Estoque baixo" value={`${lowStock.length} produtos`} />
+        <Metric icon={ShoppingCart} label="Kg vendidos" value={formatKg(soldKg)} />
+        <Metric icon={PackagePlus} label="Kg recebidos" value={formatKg(entryKg)} />
+        <Metric icon={CircleDollarSign} label="Ticket medio" value={formatMoney(averageTicket)} />
+        <Metric icon={Warehouse} label="Produtos ativos" value={`${data.products.filter((product) => product.active).length}`} />
+      </div>
+
+      <section className="panel report-print-section">
+        <h2>Vendas no periodo</h2>
+        <Table empty="Nenhuma venda no periodo." headers={['Data', 'Produto', 'Cliente', 'Peso', 'Valor']} rows={salesRows} />
+      </section>
+      <section className="panel report-print-section">
+        <h2>Despesas no periodo</h2>
+        <Table empty="Nenhuma despesa no periodo." headers={['Data', 'Categoria', 'Descricao', 'Valor']} rows={expenseRows} />
+      </section>
+      <section className="panel report-print-section">
+        <h2>Estoque atual</h2>
+        <Table empty="Nenhum produto cadastrado." headers={['Produto', 'Categoria', 'Estoque', 'Minimo', 'Status']} rows={stockRows} />
+      </section>
     </div>
   );
 }

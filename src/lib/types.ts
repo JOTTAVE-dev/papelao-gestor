@@ -125,4 +125,5 @@ export type Page =
   | 'customers'
   | 'admin'
   | 'voice'
+  | 'reports'
   | 'backup';

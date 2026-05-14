@@ -1328,6 +1328,47 @@ tr:hover td {
   max-width: 780px;
 }
 
+.reports-page {
+  display: grid;
+  gap: 18px;
+}
+
+.report-controls {
+  align-items: end;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(220px, 1fr) minmax(320px, 1.2fr) auto;
+}
+
+.muted-paragraph {
+  color: var(--muted);
+  line-height: 1.55;
+  margin-bottom: 0;
+}
+
+.report-filter-grid {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+}
+
+.report-presets,
+.report-export-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.report-export-actions {
+  justify-content: flex-end;
+}
+
+.report-summary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .backup-panel p,
 .settings-list span {
   color: var(--muted);
@@ -1912,6 +1953,48 @@ tr:hover td {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .reports-page {
+    gap: 10px;
+  }
+
+  .report-controls {
+    gap: 12px;
+    grid-template-columns: 1fr;
+  }
+
+  .report-filter-grid {
+    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .report-presets {
+    grid-column: 1 / -1;
+  }
+
+  .report-presets .small-button {
+    flex: 1 1 0;
+  }
+
+  .report-export-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .report-export-actions .secondary-button,
+  .report-export-actions .primary-button {
+    border-radius: 11px;
+    font-size: 0.76rem;
+    gap: 5px;
+    min-height: 38px;
+    padding: 7px 5px;
+  }
+
+  .report-export-actions svg {
+    height: 15px;
+    width: 15px;
+  }
+
   .panel,
   .metric {
     border-radius: 16px;
@@ -2073,5 +2156,48 @@ tr:hover td {
 
   .login-copy p {
     display: none;
+  }
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+
+  .sidebar,
+  .topbar,
+  .page-heading,
+  .report-controls,
+  .toast-viewport {
+    display: none !important;
+  }
+
+  .shell,
+  .main,
+  .reports-page {
+    display: block;
+    padding: 0;
+  }
+
+  .panel,
+  .metric {
+    border: 1px solid #d8dee4;
+    box-shadow: none;
+  }
+
+  .report-summary {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(4, 1fr);
+    margin-bottom: 14px;
+  }
+
+  .report-print-section {
+    break-inside: avoid;
+    margin-bottom: 14px;
+  }
+
+  table {
+    min-width: 0;
   }
 }
