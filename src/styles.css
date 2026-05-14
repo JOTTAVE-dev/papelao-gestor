@@ -1808,8 +1808,7 @@ tr:hover td {
   }
 
   .sidebar-toggle,
-  .sidebar-profile,
-  .exit {
+  .sidebar-profile {
     display: none;
   }
 
@@ -1847,7 +1846,8 @@ tr:hover td {
   }
 
   .nav-button,
-  .sidebar.collapsed .nav-button {
+  .sidebar.collapsed .nav-button,
+  .exit {
     border-radius: 13px;
     flex: 0 0 auto;
     gap: 8px;
@@ -1855,6 +1855,13 @@ tr:hover td {
     justify-content: center;
     min-height: 40px;
     padding: 8px 10px;
+  }
+
+  .exit {
+    border-color: #f0c7c2;
+    color: #a93e36;
+    margin-top: 0;
+    width: 100%;
   }
 
   .nav-button svg {
