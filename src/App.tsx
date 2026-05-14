@@ -3020,26 +3020,48 @@ function Table({
   if (!rows.length) return <div className="empty-state">{empty}</div>;
 
   return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            {headers.map((header) => (
-              <th key={header}>{header}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr key={index}>
-              {row.map((cell, cellIndex) => (
-                <td key={cellIndex}>{cell}</td>
+    <>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              {headers.map((header) => (
+                <th key={header}>{header}</th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {rows.map((row, index) => (
+              <tr key={index}>
+                {row.map((cell, cellIndex) => (
+                  <td key={cellIndex}>{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="mobile-card-list">
+        {rows.map((row, index) => (
+          <article className="mobile-data-card" key={index}>
+            <div className="mobile-data-card-title">{row[0]}</div>
+            <div className="mobile-data-card-body">
+              {row.slice(1).map((cell, cellIndex) => {
+                const header = headers[cellIndex + 1] || '';
+                const normalizedHeader = header.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+                const isAction = normalizedHeader.startsWith('aco') || header === '';
+                return (
+                  <div className={isAction ? 'mobile-data-card-actions' : 'mobile-data-card-row'} key={cellIndex}>
+                    {!isAction && <span>{header}</span>}
+                    <strong>{cell}</strong>
+                  </div>
+                );
+              })}
+            </div>
+          </article>
+        ))}
+      </div>
+    </>
   );
 }
 
