@@ -320,6 +320,12 @@ export default function App() {
                   <span>{session.user.email}</span>
                 </div>
               </div>
+              {canOpenAdmin && (
+                <button className="profile-admin-link" onClick={() => navigateTo('admin')} type="button">
+                  <ShieldCheck size={17} />
+                  Admin
+                </button>
+              )}
               <button className="profile-logout" onClick={() => supabase.auth.signOut()} type="button">
                 <LogOut size={17} />
                 Sair

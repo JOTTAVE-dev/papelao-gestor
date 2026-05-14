@@ -720,12 +720,10 @@ textarea:focus {
   max-width: 180px;
 }
 
+.profile-admin-link,
 .profile-logout {
   align-items: center;
-  background: var(--danger-soft);
-  border: 1px solid #f0c7c2;
   border-radius: 12px;
-  color: #a93e36;
   display: inline-flex;
   font-weight: 850;
   gap: 8px;
@@ -733,6 +731,19 @@ textarea:focus {
   min-height: 38px;
   padding: 8px 10px;
   width: 100%;
+}
+
+.profile-admin-link {
+  background: #eef6ff;
+  border: 1px solid #d8e9ff;
+  color: var(--primary-blue);
+  display: none;
+}
+
+.profile-logout {
+  background: var(--danger-soft);
+  border: 1px solid #f0c7c2;
+  color: #a93e36;
 }
 
 .sidebar.collapsed .brand,
@@ -1956,6 +1967,10 @@ tr:hover td {
     top: 48px;
     width: min(280px, calc(100vw - 44px));
     z-index: 30;
+  }
+
+  .profile-admin-link {
+    display: inline-flex;
   }
 
   .sidebar .brand strong {
