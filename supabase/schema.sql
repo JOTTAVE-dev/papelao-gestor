@@ -63,7 +63,7 @@ create table if not exists public.expenses (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   description text not null,
-  category text not null check (category in ('almoco', 'frete', 'manutencao', 'combustivel', 'outros')),
+  category text not null,
   amount numeric(12, 2) not null check (amount > 0),
   occurred_at timestamptz not null default now(),
   notes text,

@@ -87,7 +87,7 @@ const emptyData: AppData = {
   profiles: [],
 };
 
-const expenseLabels: Record<ExpenseCategory, string> = {
+const expenseLabels: Record<string, string> = {
   almoco: 'Almoco de funcionarios',
   frete: 'Frete',
   manutencao: 'Manutencao',
@@ -96,6 +96,7 @@ const expenseLabels: Record<ExpenseCategory, string> = {
 };
 
 type VoiceIntent = 'entrada' | 'venda' | 'saida' | 'despesa' | 'produto';
+type VoiceStatus = 'idle' | 'listening' | 'processing' | 'completed' | 'error';
 
 type ParsedVoiceCommand = {
   intent: VoiceIntent;
@@ -222,21 +223,6 @@ export default function App() {
     setError('');
   }, [error, session]);
 
-  useEffect(() => {
-    const isSuperAdmin = data.currentProfile?.role === 'super_admin';
-    const supportOwnerId = isSuperAdmin ? data.currentProfile?.support_company_owner_id || null : null;
-    const supportRequired = Boolean(session) && isSuperAdmin && !supportOwnerId && page !== 'admin' && page !== 'backup';
-
-    if (!supportRequired) return;
-    showToast({
-      variant: 'warning',
-      title: 'Selecione uma empresa para suporte',
-      description: 'Escolha a empresa na tela Admin para evitar dados misturados.',
-      actionLabel: 'Abrir Admin',
-      onAction: () => setPage('admin'),
-    });
-  }, [data.currentProfile, page, session]);
-
   if (!hasSupabaseConfig) {
     return <MissingConfig />;
   }
@@ -273,6 +259,29 @@ export default function App() {
         }
       : data;
   const visibleNavItems = navItems.filter((item) => item.page !== 'admin' || canOpenAdmin);
+
+  useEffect(() => {
+    if (!session || !supportRequired) return;
+    showToast({
+      variant: 'warning',
+      title: 'Selecione uma empresa para suporte',
+      description: 'Escolha a empresa na tela Admin para evitar dados misturados.',
+      actionLabel: 'Abrir Admin',
+      onAction: () => setPage('admin'),
+    });
+  }, [session, supportRequired]);
+
+  if (!hasSupabaseConfig) {
+    return <MissingConfig />;
+  }
+
+  if (authLoading) {
+    return <div className="boot">Carregando RODPEL...</div>;
+  }
+
+  if (!session) {
+    return <PremiumLoginScreen onError={setError} error={error} />;
+  }
 
   return (
     <div className={sidebarExpanded ? 'shell sidebar-expanded' : 'shell sidebar-collapsed'}>
@@ -505,9 +514,14 @@ function PremiumLoginScreen({ error, onError }: { error: string; onError: (value
     setLoading(true);
     onError('');
     setAuthNotice('');
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
-    if (authError) onError(authError.message);
-    setLoading(false);
+    try {
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      if (authError) onError(authError.message);
+    } catch {
+      onError('Nao foi possivel conectar ao Supabase. Verifique as variaveis da Vercel e tente novamente.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -823,42 +837,100 @@ function Dashboard({ data }: { data: AppData }) {
 }
 
 function VoicePage({ data, runAction }: PageProps) {
-  const [listening, setListening] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
   const [transcript, setTranscript] = useState('');
   const [speechError, setSpeechError] = useState('');
+  const [backendMessage, setBackendMessage] = useState('');
   const [parsed, setParsed] = useState<ParsedVoiceCommand | null>(null);
 
   const recognitionAvailable = typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+  const listening = voiceStatus === 'listening';
+  const processing = voiceStatus === 'processing';
 
-  function startListening() {
+  async function requestMicrophonePermission() {
+    if (!navigator.mediaDevices?.getUserMedia) return;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((track) => track.stop());
+  }
+
+  async function sendAudioText(text: string) {
+    setVoiceStatus('processing');
+    setBackendMessage('');
+    const response = await fetch('/lancamentos/audio', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texto: text }),
+    });
+    const result = (await response.json().catch(() => null)) as { mensagem?: string; error?: string } | null;
+    if (!response.ok) {
+      throw new Error(result?.error || 'Nao foi possivel enviar o texto para o backend.');
+    }
+    setBackendMessage(result?.mensagem || 'Lancamento por audio recebido.');
+    setVoiceStatus('completed');
+  }
+
+  async function startListening() {
     setSpeechError('');
+    setBackendMessage('');
     if (!recognitionAvailable) {
       setSpeechError('Seu navegador nao suporta reconhecimento de voz. No celular, teste pelo Chrome.');
+      setVoiceStatus('error');
       return;
     }
 
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Recognition) return;
 
+    try {
+      await requestMicrophonePermission();
+    } catch {
+      setSpeechError('Permissao do microfone negada. Libere o microfone no navegador para usar o lancamento por audio.');
+      setVoiceStatus('error');
+      return;
+    }
+
     const recognition = new Recognition();
     recognition.lang = 'pt-BR';
     recognition.interimResults = false;
     recognition.continuous = false;
-    recognition.onresult = (event) => {
+    recognition.onresult = async (event) => {
       const text = Array.from(event.results)
         .map((result) => result[0]?.transcript || '')
         .join(' ')
         .trim();
       setTranscript(text);
       setParsed(parseVoiceCommand(text));
+      if (!text) {
+        setSpeechError('Nenhuma fala foi identificada. Tente novamente mais perto do microfone.');
+        setVoiceStatus('error');
+        return;
+      }
+      try {
+        await sendAudioText(text);
+      } catch (err) {
+        setSpeechError(getMessage(err));
+        setVoiceStatus('error');
+      }
     };
     recognition.onerror = (event) => {
-      setSpeechError(`Nao foi possivel entender o audio${event.error ? `: ${event.error}` : '.'}`);
-      setListening(false);
+      const denied = event.error === 'not-allowed' || event.error === 'service-not-allowed';
+      setSpeechError(
+        denied
+          ? 'Permissao do microfone negada. Libere o microfone no navegador para usar o lancamento por audio.'
+          : `Nao foi possivel entender o audio${event.error ? `: ${event.error}` : '.'}`,
+      );
+      setVoiceStatus('error');
     };
-    recognition.onend = () => setListening(false);
-    setListening(true);
-    recognition.start();
+    recognition.onend = () => {
+      setVoiceStatus((current) => (current === 'listening' ? 'idle' : current));
+    };
+    try {
+      setVoiceStatus('listening');
+      recognition.start();
+    } catch (err) {
+      setSpeechError(getMessage(err));
+      setVoiceStatus('error');
+    }
   }
 
   function updateParsed<K extends keyof ParsedVoiceCommand>(key: K, value: ParsedVoiceCommand[K]) {
@@ -939,21 +1011,33 @@ function VoicePage({ data, runAction }: PageProps) {
 
   const canConfirm = parsed ? validateVoiceCommand(parsed, data).length === 0 : false;
   const validationMessages = parsed ? validateVoiceCommand(parsed, data) : [];
+  const statusLabel =
+    voiceStatus === 'listening'
+      ? 'Ouvindo'
+      : voiceStatus === 'processing'
+        ? 'Processando'
+        : voiceStatus === 'completed'
+          ? 'Concluido'
+          : voiceStatus === 'error'
+            ? 'Erro'
+            : 'Pronto';
 
   return (
     <div className="voice-layout">
       <section className="panel voice-panel">
         <div className="voice-hero">
-          <button className={listening ? 'mic-button listening' : 'mic-button'} onClick={startListening} type="button">
+          <button className={listening ? 'mic-button listening' : 'mic-button'} disabled={listening || processing} onClick={startListening} type="button">
             <Mic size={34} />
           </button>
           <div>
             <h2>Lançamento por áudio</h2>
             <p>Toque no microfone, fale o comando e revise os dados antes de salvar.</p>
+            <span className={`voice-status ${voiceStatus}`}>{statusLabel}</span>
           </div>
         </div>
 
         {speechError && <div className="notice danger">{speechError}</div>}
+        {backendMessage && <div className="notice success">{backendMessage}</div>}
         {!recognitionAvailable && <div className="notice neutral">Reconhecimento de voz disponível principalmente no Chrome/Android.</div>}
 
         <label>
@@ -962,11 +1046,32 @@ function VoicePage({ data, runAction }: PageProps) {
             value={transcript}
             onChange={(event) => {
               setTranscript(event.target.value);
+              setBackendMessage('');
+              setVoiceStatus('idle');
               setParsed(event.target.value.trim() ? parseVoiceCommand(event.target.value) : null);
             }}
             placeholder="Ex.: Chegou 500 folhas de papelão onda B do fornecedor João, preço 2 reais cada."
           />
         </label>
+        <div className="form-actions">
+          <button
+            className="secondary-button"
+            disabled={!transcript.trim() || listening || processing}
+            onClick={async () => {
+              setSpeechError('');
+              try {
+                await sendAudioText(transcript.trim());
+              } catch (err) {
+                setSpeechError(getMessage(err));
+                setVoiceStatus('error');
+              }
+            }}
+            type="button"
+          >
+            <RefreshCcw size={18} />
+            Enviar texto
+          </button>
+        </div>
       </section>
 
       <section className="panel voice-panel">
@@ -1884,7 +1989,7 @@ function ExpensesPage({ data, runAction, canManage }: PageProps & { canManage: b
   const [viewing, setViewing] = useState<Expense | null>(null);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [deleting, setDeleting] = useState<Expense | null>(null);
-  const filtered = filterBy(data.expenses, query, (expense) => `${expense.description} ${expenseLabels[expense.category]} ${expense.notes || ''}`);
+  const filtered = filterBy(data.expenses, query, (expense) => `${expense.description} ${expenseCategoryLabel(expense.category)} ${expense.notes || ''}`);
   const closeExpenseModal = () => {
     setCreating(false);
     setEditing(null);
@@ -1909,7 +2014,7 @@ function ExpensesPage({ data, runAction, canManage }: PageProps & { canManage: b
           headers={['Descricao', 'Categoria', 'Valor', 'Data', 'Acoes']}
           rows={filtered.map((expense) => [
             expense.description,
-            expenseLabels[expense.category],
+            expenseCategoryLabel(expense.category),
             formatMoney(expense.amount),
             formatDateTime(expense.occurred_at),
             <div className="row-actions">
@@ -1933,6 +2038,7 @@ function ExpensesPage({ data, runAction, canManage }: PageProps & { canManage: b
         <Modal title={editing ? 'Editar despesa' : 'Nova despesa'} onClose={closeExpenseModal}>
           <ExpenseForm
             expense={editing}
+            expenses={data.expenses}
             onCancel={closeExpenseModal}
             onSubmit={(input) =>
               runAction(editing ? 'Despesa atualizada.' : 'Despesa registrada.', async () => {
@@ -1995,23 +2101,29 @@ function ExpensesPage({ data, runAction, canManage }: PageProps & { canManage: b
 
 function ExpenseForm({
   expense,
+  expenses,
   onSubmit,
   onCancel,
 }: {
   expense: Expense | null;
+  expenses: Expense[];
   onSubmit: (input: { description: string; category: ExpenseCategory; amount: number; occurred_at: string; notes: string }) => void;
   onCancel: () => void;
 }) {
   const [description, setDescription] = useState(expense?.description || '');
-  const [category, setCategory] = useState<ExpenseCategory>(expense?.category || 'almoco');
-  const [amount, setAmount] = useState(expense?.amount || 0);
+  const [category, setCategory] = useState(expense?.category || '');
+  const [amount, setAmount] = useState(currencyInputValue(expense?.amount || 0));
   const [date, setDate] = useState(expense ? toInputDateTime(expense.occurred_at) : toInputDateTime());
   const [notes, setNotes] = useState(expense?.notes || '');
+  const categoryOptions = Array.from(
+    new Set([...Object.keys(expenseLabels), ...expenses.map((item) => item.category)].filter(Boolean)),
+  ).sort((a, b) => expenseCategoryLabel(a).localeCompare(expenseCategoryLabel(b)));
+  const amountNumber = parseCurrencyInput(amount);
 
   useEffect(() => {
     setDescription(expense?.description || '');
-    setCategory(expense?.category || 'almoco');
-    setAmount(expense?.amount || 0);
+    setCategory(expense?.category || '');
+    setAmount(currencyInputValue(expense?.amount || 0));
     setDate(expense ? toInputDateTime(expense.occurred_at) : toInputDateTime());
     setNotes(expense?.notes || '');
   }, [expense]);
@@ -2021,7 +2133,7 @@ function ExpenseForm({
       className="form-grid"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit({ description, category, amount, occurred_at: fromInputDateTime(date), notes });
+        onSubmit({ description, category: category.trim(), amount: amountNumber, occurred_at: fromInputDateTime(date), notes });
       }}
     >
       <label>
@@ -2030,17 +2142,31 @@ function ExpenseForm({
       </label>
       <label>
         Categoria
-        <select value={category} onChange={(event) => setCategory(event.target.value as ExpenseCategory)}>
-          {Object.entries(expenseLabels).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
+        <input
+          list="expense-category-options"
+          value={category}
+          onChange={(event) => setCategory(event.target.value)}
+          placeholder="Digite ou escolha uma categoria"
+          required
+        />
+        <datalist id="expense-category-options">
+          {categoryOptions.map((option) => (
+            <option key={option} value={option}>
+              {expenseCategoryLabel(option)}
             </option>
           ))}
-        </select>
+        </datalist>
       </label>
       <label>
         Valor
-        <input min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(Number(event.target.value))} type="number" required />
+        <input
+          inputMode="decimal"
+          onChange={(event) => setAmount(formatCurrencyInput(event.target.value))}
+          placeholder="R$ 0,00"
+          required
+          type="text"
+          value={amount}
+        />
       </label>
       <label>
         Data e hora
@@ -2054,7 +2180,7 @@ function ExpenseForm({
         <button className="secondary-button" onClick={onCancel} type="button">
           Cancelar
         </button>
-        <button className="primary-button" type="submit">
+        <button className="primary-button" disabled={!category.trim() || amountNumber <= 0} type="submit">
           <Save size={18} />
           Salvar
         </button>
@@ -2072,7 +2198,7 @@ function ExpenseDetails({ expense, compact = false }: { expense: Expense; compac
       </div>
       <div>
         <span>Categoria</span>
-        <strong>{expenseLabels[expense.category]}</strong>
+        <strong>{expenseCategoryLabel(expense.category)}</strong>
       </div>
       <div>
         <span>Valor</span>
@@ -2745,6 +2871,25 @@ function optionFromName(item: { id: string; name: string }) {
 
 function roundMoney(value: number) {
   return Math.round((value || 0) * 100) / 100;
+}
+
+function expenseCategoryLabel(category: string) {
+  return expenseLabels[category] || toTitle(category);
+}
+
+function currencyInputValue(value: number) {
+  return value > 0 ? formatMoney(value) : '';
+}
+
+function formatCurrencyInput(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  return formatMoney(Number(digits) / 100);
+}
+
+function parseCurrencyInput(value: string) {
+  const digits = value.replace(/\D/g, '');
+  return digits ? Number(digits) / 100 : 0;
 }
 
 function filterBy<T>(items: T[], query: string, getText: (item: T) => string) {

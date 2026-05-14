@@ -57,7 +57,7 @@ export type Sale = {
   created_at: string;
 };
 
-export type ExpenseCategory = 'almoco' | 'frete' | 'manutencao' | 'combustivel' | 'outros';
+export type ExpenseCategory = string;
 
 export type Expense = {
   id: string;
