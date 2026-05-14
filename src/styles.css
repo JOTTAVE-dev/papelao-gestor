@@ -1881,6 +1881,15 @@ tr:hover td {
     padding: 6px 0 22px;
   }
 
+  .main > .content-grid,
+  .main > .admin-layout,
+  .main > .voice-layout,
+  .main > .reports-page,
+  .main > .backup-panel,
+  .main > .panel {
+    margin-top: 0;
+  }
+
   .topbar {
     align-items: center;
     flex-direction: row;
@@ -1960,8 +1969,19 @@ tr:hover td {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .admin-layout,
+  .voice-layout,
+  .two-column {
+    gap: 10px;
+  }
+
   .reports-page {
     gap: 10px;
+  }
+
+  .backup-panel {
+    max-width: none;
+    width: 100%;
   }
 
   .report-controls {
