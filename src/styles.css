@@ -1906,10 +1906,34 @@ tr:hover td {
     min-height: 40px;
   }
 
+  .profile-menu {
+    align-self: start;
+    width: 40px;
+  }
+
+  .profile-trigger {
+    height: 40px;
+    justify-content: center;
+    padding: 0;
+    width: 40px;
+  }
+
+  .profile-trigger .brand-copy {
+    display: none;
+  }
+
   .sidebar .brand-mark {
     border-radius: 13px;
     height: 40px;
     width: 40px;
+  }
+
+  .profile-popover {
+    left: 0;
+    position: absolute;
+    top: 48px;
+    width: min(280px, calc(100vw - 44px));
+    z-index: 30;
   }
 
   .sidebar .brand strong {
