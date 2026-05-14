@@ -1343,7 +1343,32 @@ tr:hover td {
 .muted-paragraph {
   color: var(--muted);
   line-height: 1.55;
-  margin-bottom: 0;
+  margin-bottom: 10px;
+}
+
+.selected-period {
+  align-items: center;
+  background: #eaf4ff;
+  border: 1px solid #cfe6ff;
+  border-radius: 999px;
+  color: #1b5f9f;
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 850;
+  padding: 7px 10px;
+}
+
+.filter-chip {
+  background: #f7fbff;
+  border-color: #dbeafe;
+  color: #315f8a;
+}
+
+.filter-chip.active {
+  background: #dff0ff;
+  border-color: #9fd0ff;
+  box-shadow: 0 0 0 3px rgba(29, 107, 255, 0.08);
+  color: #155c9f;
 }
 
 .report-filter-grid {

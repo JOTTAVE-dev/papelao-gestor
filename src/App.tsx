@@ -2687,9 +2687,11 @@ function ReportsPage({ data }: { data: AppData }) {
   const todayInput = today.toISOString().slice(0, 10);
   const [startDate, setStartDate] = useState(monthStart);
   const [endDate, setEndDate] = useState(todayInput);
+  const [activePreset, setActivePreset] = useState<'today' | 'week' | 'month' | 'custom'>('month');
 
   const start = new Date(`${startDate}T00:00:00`);
   const end = new Date(`${endDate}T23:59:59.999`);
+  const periodLabel = `${new Intl.DateTimeFormat('pt-BR').format(start)} ate ${new Intl.DateTimeFormat('pt-BR').format(end)}`;
   const inPeriod = (value: string) => {
     const date = new Date(value);
     return date >= start && date <= end;
@@ -2740,6 +2742,7 @@ function ReportsPage({ data }: { data: AppData }) {
     if (preset === 'month') startPreset.setDate(1);
     setStartDate(startPreset.toISOString().slice(0, 10));
     setEndDate(now.toISOString().slice(0, 10));
+    setActivePreset(preset);
   }
 
   function download(filename: string, content: string, type: string) {
@@ -2820,20 +2823,35 @@ function ReportsPage({ data }: { data: AppData }) {
         <div>
           <h2>Relatorio por periodo</h2>
           <p className="muted-paragraph">Vendas, despesas e estoque usando somente os dados da empresa atual.</p>
+          <span className="selected-period">Periodo selecionado: {periodLabel}</span>
         </div>
         <div className="report-filter-grid">
           <label>
             Inicio
-            <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+            <input
+              type="date"
+              value={startDate}
+              onChange={(event) => {
+                setStartDate(event.target.value);
+                setActivePreset('custom');
+              }}
+            />
           </label>
           <label>
             Fim
-            <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+            <input
+              type="date"
+              value={endDate}
+              onChange={(event) => {
+                setEndDate(event.target.value);
+                setActivePreset('custom');
+              }}
+            />
           </label>
           <div className="report-presets">
-            <button className="small-button" type="button" onClick={() => setPreset('today')}>Hoje</button>
-            <button className="small-button" type="button" onClick={() => setPreset('week')}>7 dias</button>
-            <button className="small-button" type="button" onClick={() => setPreset('month')}>Mes</button>
+            <button className={activePreset === 'today' ? 'small-button filter-chip active' : 'small-button filter-chip'} type="button" onClick={() => setPreset('today')}>Hoje</button>
+            <button className={activePreset === 'week' ? 'small-button filter-chip active' : 'small-button filter-chip'} type="button" onClick={() => setPreset('week')}>7 dias</button>
+            <button className={activePreset === 'month' ? 'small-button filter-chip active' : 'small-button filter-chip'} type="button" onClick={() => setPreset('month')}>Mes</button>
           </div>
         </div>
         <div className="report-export-actions">
