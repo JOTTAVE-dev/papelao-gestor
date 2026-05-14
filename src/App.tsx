@@ -222,18 +222,6 @@ export default function App() {
     setError('');
   }, [error, session]);
 
-  if (!hasSupabaseConfig) {
-    return <MissingConfig />;
-  }
-
-  if (authLoading) {
-    return <div className="boot">Carregando Papelão Gestor...</div>;
-  }
-
-  if (!session) {
-    return <PremiumLoginScreen onError={setError} error={error} />;
-  }
-
   const CurrentIcon = navItems.find((item) => item.page === page)?.icon || Warehouse;
   const isSuperAdmin = data.currentProfile?.role === 'super_admin';
   const isOwner = data.currentProfile?.role === 'owner';
@@ -260,7 +248,7 @@ export default function App() {
   const visibleNavItems = navItems.filter((item) => item.page !== 'admin' || canOpenAdmin);
 
   useEffect(() => {
-    if (!supportRequired) return;
+    if (!session || !supportRequired) return;
     showToast({
       variant: 'warning',
       title: 'Selecione uma empresa para suporte',
@@ -268,7 +256,19 @@ export default function App() {
       actionLabel: 'Abrir Admin',
       onAction: () => setPage('admin'),
     });
-  }, [supportRequired]);
+  }, [session, supportRequired]);
+
+  if (!hasSupabaseConfig) {
+    return <MissingConfig />;
+  }
+
+  if (authLoading) {
+    return <div className="boot">Carregando RODPEL...</div>;
+  }
+
+  if (!session) {
+    return <PremiumLoginScreen onError={setError} error={error} />;
+  }
 
   return (
     <div className={sidebarExpanded ? 'shell sidebar-expanded' : 'shell sidebar-collapsed'}>
@@ -501,9 +501,14 @@ function PremiumLoginScreen({ error, onError }: { error: string; onError: (value
     setLoading(true);
     onError('');
     setAuthNotice('');
-    const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
-    if (authError) onError(authError.message);
-    setLoading(false);
+    try {
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      if (authError) onError(authError.message);
+    } catch {
+      onError('Nao foi possivel conectar ao Supabase. Verifique as variaveis da Vercel e tente novamente.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
