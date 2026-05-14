@@ -821,25 +821,6 @@ nav {
   gap: 10px;
 }
 
-.time-pill {
-  align-items: center;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  color: #26302d;
-  display: inline-flex;
-  font-size: 0.88rem;
-  font-weight: 800;
-  gap: 8px;
-  min-height: 42px;
-  padding: 0 13px;
-  white-space: nowrap;
-}
-
-.time-pill svg {
-  color: var(--primary-blue);
-}
-
 .icon-button {
   height: 42px;
   padding: 0;
@@ -1903,22 +1884,8 @@ tr:hover td {
   }
 
   .topbar-actions {
-    flex-wrap: nowrap;
     margin-left: auto;
-    overflow-x: auto;
-    padding-bottom: 2px;
-    scrollbar-width: none;
-  }
-
-  .topbar-actions::-webkit-scrollbar {
-    display: none;
-  }
-
-  .time-pill {
-    border-radius: 12px;
-    font-size: 0.8rem;
-    min-height: 38px;
-    padding: 0 10px;
+    padding-bottom: 0;
   }
 
   .icon-button {

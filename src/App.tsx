@@ -6,7 +6,6 @@ import {
   Archive,
   Bell,
   Boxes,
-  CalendarDays,
   Check,
   CircleDollarSign,
   ShieldCheck,
@@ -344,16 +343,6 @@ export default function App() {
             <input placeholder="Buscar produtos, vendas, entradas ou relatórios..." />
           </div>
           <div className="topbar-actions">
-            <div className="time-pill">
-              <CalendarDays size={16} />
-              {new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(new Date())}
-            </div>
-            <button className="icon-button" title="Notificações" type="button">
-              <Bell size={18} />
-            </button>
-            <button className="icon-button" title="Configurações" type="button" onClick={() => setPage('backup')}>
-              <SlidersHorizontal size={18} />
-            </button>
             <button
               className="icon-button"
               onClick={() => {
