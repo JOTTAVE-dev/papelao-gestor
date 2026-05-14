@@ -223,18 +223,6 @@ export default function App() {
     setError('');
   }, [error, session]);
 
-  if (!hasSupabaseConfig) {
-    return <MissingConfig />;
-  }
-
-  if (authLoading) {
-    return <div className="boot">Carregando Papelão Gestor...</div>;
-  }
-
-  if (!session) {
-    return <PremiumLoginScreen onError={setError} error={error} />;
-  }
-
   const CurrentIcon = navItems.find((item) => item.page === page)?.icon || Warehouse;
   const isSuperAdmin = data.currentProfile?.role === 'super_admin';
   const isOwner = data.currentProfile?.role === 'owner';
