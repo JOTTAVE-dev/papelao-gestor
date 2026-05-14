@@ -796,6 +796,7 @@ function Dashboard({ data }: { data: AppData }) {
         <Table
           empty="Nenhum produto abaixo do minimo."
           headers={['Produto', 'Categoria', 'Estoque', 'Minimo']}
+          mobileCards={false}
           rows={lowStock.map((product) => [
             product.name,
             product.category,
@@ -813,6 +814,7 @@ function Dashboard({ data }: { data: AppData }) {
         <Table
           empty="Nenhuma movimentacao registrada."
           headers={['Tipo', 'Descricao', 'Data']}
+          mobileCards={false}
           rows={recent.map((item) => [item.kind, item.text, formatDateTime(item.at)])}
         />
       </section>
@@ -3017,16 +3019,18 @@ function Table({
   headers,
   rows,
   empty,
+  mobileCards = true,
 }: {
   headers: string[];
   rows: ReactNode[][];
   empty: string;
+  mobileCards?: boolean;
 }) {
   if (!rows.length) return <div className="empty-state">{empty}</div>;
 
   return (
     <>
-      <div className="table-wrap">
+      <div className={mobileCards ? 'table-wrap' : 'table-wrap keep-mobile-table'}>
         <table>
           <thead>
             <tr>
@@ -3046,26 +3050,28 @@ function Table({
           </tbody>
         </table>
       </div>
-      <div className="mobile-card-list">
-        {rows.map((row, index) => (
-          <article className="mobile-data-card" key={index}>
-            <div className="mobile-data-card-title">{row[0]}</div>
-            <div className="mobile-data-card-body">
-              {row.slice(1).map((cell, cellIndex) => {
-                const header = headers[cellIndex + 1] || '';
-                const normalizedHeader = header.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-                const isAction = normalizedHeader.startsWith('aco') || header === '';
-                return (
-                  <div className={isAction ? 'mobile-data-card-actions' : 'mobile-data-card-row'} key={cellIndex}>
-                    {!isAction && <span>{header}</span>}
-                    <strong>{cell}</strong>
-                  </div>
-                );
-              })}
-            </div>
-          </article>
-        ))}
-      </div>
+      {mobileCards && (
+        <div className="mobile-card-list">
+          {rows.map((row, index) => (
+            <article className="mobile-data-card" key={index}>
+              <div className="mobile-data-card-title">{row[0]}</div>
+              <div className="mobile-data-card-body">
+                {row.slice(1).map((cell, cellIndex) => {
+                  const header = headers[cellIndex + 1] || '';
+                  const normalizedHeader = header.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+                  const isAction = normalizedHeader.startsWith('aco') || header === '';
+                  return (
+                    <div className={isAction ? 'mobile-data-card-actions' : 'mobile-data-card-row'} key={cellIndex}>
+                      {!isAction && <span>{header}</span>}
+                      <strong>{cell}</strong>
+                    </div>
+                  );
+                })}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
     </>
   );
 }

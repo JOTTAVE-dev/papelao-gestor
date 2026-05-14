@@ -2262,6 +2262,29 @@ tr:hover td {
     display: none;
   }
 
+  .table-wrap.keep-mobile-table {
+    display: block;
+    margin-inline: -4px;
+    padding-inline: 4px;
+  }
+
+  .table-wrap.keep-mobile-table table {
+    min-width: 560px;
+  }
+
+  .table-wrap.keep-mobile-table th,
+  .table-wrap.keep-mobile-table td {
+    padding: 9px 10px;
+  }
+
+  .table-wrap.keep-mobile-table th {
+    font-size: 0.7rem;
+  }
+
+  .table-wrap.keep-mobile-table td {
+    font-size: 0.82rem;
+  }
+
   .mobile-card-list {
     display: grid;
     gap: 10px;
