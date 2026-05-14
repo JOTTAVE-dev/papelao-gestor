@@ -159,6 +159,7 @@ export default function App() {
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [mobileCreateOpen, setMobileCreateOpen] = useState(false);
   const [toasts, setToasts] = useState<AppToast[]>([]);
 
   useEffect(() => {
@@ -249,6 +250,12 @@ export default function App() {
       : data;
   const visibleNavItems = navItems.filter((item) => item.page !== 'admin' || canOpenAdmin);
 
+  function navigateTo(nextPage: Page) {
+    setPage(nextPage);
+    setMobileCreateOpen(false);
+    setProfileMenuOpen(false);
+  }
+
   useEffect(() => {
     if (!session || !supportRequired) return;
     showToast({
@@ -328,7 +335,7 @@ export default function App() {
               <button
                 key={item.page}
                 className={page === item.page ? 'nav-button active' : 'nav-button'}
-                onClick={() => setPage(item.page)}
+                onClick={() => navigateTo(item.page)}
                 type="button"
                 title={sidebarExpanded ? undefined : item.label}
               >
@@ -376,15 +383,15 @@ export default function App() {
             {isSuperAdmin && supportCompany && <span className="muted-text">Suporte ativo em: {supportCompany.name}</span>}
           </div>
           <div className="heading-actions">
-            <button className="secondary-button" type="button" onClick={() => setPage('reports')}>
+            <button className="secondary-button" type="button" onClick={() => navigateTo('reports')}>
               <ReceiptText size={17} />
               Relatório
             </button>
-            <button className="secondary-button" type="button" onClick={() => setPage('products')}>
+            <button className="secondary-button" type="button" onClick={() => navigateTo('products')}>
               <Boxes size={17} />
               Novo produto
             </button>
-            <button className="primary-button" type="button" onClick={() => setPage('sales')}>
+            <button className="primary-button" type="button" onClick={() => navigateTo('sales')}>
               <ShoppingCart size={17} />
               Nova venda
             </button>
@@ -412,6 +419,49 @@ export default function App() {
         )}
         {page === 'backup' && <BackupPage runAction={runAction} />}
       </main>
+      <nav className="mobile-bottom-nav" aria-label="Navegação principal mobile">
+        <button className={page === 'backup' ? 'bottom-nav-item active' : 'bottom-nav-item'} onClick={() => navigateTo('backup')} type="button">
+          <Settings size={19} />
+          <span>Config</span>
+        </button>
+        <button className={page === 'products' ? 'bottom-nav-item active' : 'bottom-nav-item'} onClick={() => navigateTo('products')} type="button">
+          <Boxes size={19} />
+          <span>Produtos</span>
+        </button>
+        <div className={mobileCreateOpen ? 'bottom-fab-wrap open' : 'bottom-fab-wrap'}>
+          <div className="bottom-create-popover">
+            <button type="button" onClick={() => navigateTo('entries')}>
+              <PackagePlus size={17} />
+              Entradas
+            </button>
+            <button type="button" onClick={() => navigateTo('sales')}>
+              <ShoppingCart size={17} />
+              Vendas
+            </button>
+            <button type="button" onClick={() => navigateTo('expenses')}>
+              <CircleDollarSign size={17} />
+              Despesas
+            </button>
+          </div>
+          <button
+            className={['entries', 'sales', 'expenses'].includes(page) || mobileCreateOpen ? 'bottom-fab active' : 'bottom-fab'}
+            onClick={() => setMobileCreateOpen((current) => !current)}
+            type="button"
+            aria-expanded={mobileCreateOpen}
+            aria-label="Abrir ações de lançamento"
+          >
+            <Plus size={28} />
+          </button>
+        </div>
+        <button className={page === 'reports' ? 'bottom-nav-item active' : 'bottom-nav-item'} onClick={() => navigateTo('reports')} type="button">
+          <ReceiptText size={19} />
+          <span>Relatórios</span>
+        </button>
+        <button className={page === 'dashboard' ? 'bottom-nav-item active' : 'bottom-nav-item'} onClick={() => navigateTo('dashboard')} type="button">
+          <LayoutDashboard size={19} />
+          <span>Dashboard</span>
+        </button>
+      </nav>
       <ToastViewport toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
