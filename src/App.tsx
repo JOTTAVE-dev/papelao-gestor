@@ -96,6 +96,7 @@ const expenseLabels: Record<ExpenseCategory, string> = {
 };
 
 type VoiceIntent = 'entrada' | 'venda' | 'saida' | 'despesa' | 'produto';
+type VoiceStatus = 'idle' | 'listening' | 'processing' | 'completed' | 'error';
 
 type ParsedVoiceCommand = {
   intent: VoiceIntent;
@@ -824,42 +825,100 @@ function Dashboard({ data }: { data: AppData }) {
 }
 
 function VoicePage({ data, runAction }: PageProps) {
-  const [listening, setListening] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>('idle');
   const [transcript, setTranscript] = useState('');
   const [speechError, setSpeechError] = useState('');
+  const [backendMessage, setBackendMessage] = useState('');
   const [parsed, setParsed] = useState<ParsedVoiceCommand | null>(null);
 
   const recognitionAvailable = typeof window !== 'undefined' && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+  const listening = voiceStatus === 'listening';
+  const processing = voiceStatus === 'processing';
 
-  function startListening() {
+  async function requestMicrophonePermission() {
+    if (!navigator.mediaDevices?.getUserMedia) return;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((track) => track.stop());
+  }
+
+  async function sendAudioText(text: string) {
+    setVoiceStatus('processing');
+    setBackendMessage('');
+    const response = await fetch('/lancamentos/audio', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texto: text }),
+    });
+    const result = (await response.json().catch(() => null)) as { mensagem?: string; error?: string } | null;
+    if (!response.ok) {
+      throw new Error(result?.error || 'Nao foi possivel enviar o texto para o backend.');
+    }
+    setBackendMessage(result?.mensagem || 'Lancamento por audio recebido.');
+    setVoiceStatus('completed');
+  }
+
+  async function startListening() {
     setSpeechError('');
+    setBackendMessage('');
     if (!recognitionAvailable) {
       setSpeechError('Seu navegador nao suporta reconhecimento de voz. No celular, teste pelo Chrome.');
+      setVoiceStatus('error');
       return;
     }
 
     const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Recognition) return;
 
+    try {
+      await requestMicrophonePermission();
+    } catch {
+      setSpeechError('Permissao do microfone negada. Libere o microfone no navegador para usar o lancamento por audio.');
+      setVoiceStatus('error');
+      return;
+    }
+
     const recognition = new Recognition();
     recognition.lang = 'pt-BR';
     recognition.interimResults = false;
     recognition.continuous = false;
-    recognition.onresult = (event) => {
+    recognition.onresult = async (event) => {
       const text = Array.from(event.results)
         .map((result) => result[0]?.transcript || '')
         .join(' ')
         .trim();
       setTranscript(text);
       setParsed(parseVoiceCommand(text));
+      if (!text) {
+        setSpeechError('Nenhuma fala foi identificada. Tente novamente mais perto do microfone.');
+        setVoiceStatus('error');
+        return;
+      }
+      try {
+        await sendAudioText(text);
+      } catch (err) {
+        setSpeechError(getMessage(err));
+        setVoiceStatus('error');
+      }
     };
     recognition.onerror = (event) => {
-      setSpeechError(`Nao foi possivel entender o audio${event.error ? `: ${event.error}` : '.'}`);
-      setListening(false);
+      const denied = event.error === 'not-allowed' || event.error === 'service-not-allowed';
+      setSpeechError(
+        denied
+          ? 'Permissao do microfone negada. Libere o microfone no navegador para usar o lancamento por audio.'
+          : `Nao foi possivel entender o audio${event.error ? `: ${event.error}` : '.'}`,
+      );
+      setVoiceStatus('error');
     };
-    recognition.onend = () => setListening(false);
-    setListening(true);
-    recognition.start();
+    recognition.onend = () => {
+      setVoiceStatus((current) => (current === 'listening' ? 'idle' : current));
+    };
+    try {
+      setVoiceStatus('listening');
+      recognition.start();
+    } catch (err) {
+      setSpeechError(getMessage(err));
+      setVoiceStatus('error');
+    }
   }
 
   function updateParsed<K extends keyof ParsedVoiceCommand>(key: K, value: ParsedVoiceCommand[K]) {
@@ -940,21 +999,33 @@ function VoicePage({ data, runAction }: PageProps) {
 
   const canConfirm = parsed ? validateVoiceCommand(parsed, data).length === 0 : false;
   const validationMessages = parsed ? validateVoiceCommand(parsed, data) : [];
+  const statusLabel =
+    voiceStatus === 'listening'
+      ? 'Ouvindo'
+      : voiceStatus === 'processing'
+        ? 'Processando'
+        : voiceStatus === 'completed'
+          ? 'Concluido'
+          : voiceStatus === 'error'
+            ? 'Erro'
+            : 'Pronto';
 
   return (
     <div className="voice-layout">
       <section className="panel voice-panel">
         <div className="voice-hero">
-          <button className={listening ? 'mic-button listening' : 'mic-button'} onClick={startListening} type="button">
+          <button className={listening ? 'mic-button listening' : 'mic-button'} disabled={listening || processing} onClick={startListening} type="button">
             <Mic size={34} />
           </button>
           <div>
             <h2>Lançamento por áudio</h2>
             <p>Toque no microfone, fale o comando e revise os dados antes de salvar.</p>
+            <span className={`voice-status ${voiceStatus}`}>{statusLabel}</span>
           </div>
         </div>
 
         {speechError && <div className="notice danger">{speechError}</div>}
+        {backendMessage && <div className="notice success">{backendMessage}</div>}
         {!recognitionAvailable && <div className="notice neutral">Reconhecimento de voz disponível principalmente no Chrome/Android.</div>}
 
         <label>
@@ -963,11 +1034,32 @@ function VoicePage({ data, runAction }: PageProps) {
             value={transcript}
             onChange={(event) => {
               setTranscript(event.target.value);
+              setBackendMessage('');
+              setVoiceStatus('idle');
               setParsed(event.target.value.trim() ? parseVoiceCommand(event.target.value) : null);
             }}
             placeholder="Ex.: Chegou 500 folhas de papelão onda B do fornecedor João, preço 2 reais cada."
           />
         </label>
+        <div className="form-actions">
+          <button
+            className="secondary-button"
+            disabled={!transcript.trim() || listening || processing}
+            onClick={async () => {
+              setSpeechError('');
+              try {
+                await sendAudioText(transcript.trim());
+              } catch (err) {
+                setSpeechError(getMessage(err));
+                setVoiceStatus('error');
+              }
+            }}
+            type="button"
+          >
+            <RefreshCcw size={18} />
+            Enviar texto
+          </button>
+        </div>
       </section>
 
       <section className="panel voice-panel">

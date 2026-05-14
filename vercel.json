@@ -4,6 +4,10 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/lancamentos/audio",
+      "destination": "/api/lancamentos/audio"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

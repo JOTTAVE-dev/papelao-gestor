@@ -1457,6 +1457,46 @@ tr:hover td {
   margin-bottom: 0;
 }
 
+.voice-status {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.78rem;
+  font-weight: 850;
+  margin-top: 10px;
+  padding: 6px 10px;
+}
+
+.voice-status.idle {
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+
+.voice-status.listening {
+  background: var(--danger-soft);
+  border-color: #efc3bd;
+  color: #9b332b;
+}
+
+.voice-status.processing {
+  background: #eef6ff;
+  border-color: #d8e9ff;
+  color: #35577a;
+}
+
+.voice-status.completed {
+  background: #eaf7ef;
+  border-color: #bee4cd;
+  color: #23633f;
+}
+
+.voice-status.error {
+  background: var(--danger-soft);
+  border-color: #efc3bd;
+  color: #9b332b;
+}
+
 .mic-button {
   align-items: center;
   background: var(--primary-blue);
