@@ -158,6 +158,7 @@ export default function App() {
   const [error, setError] = useState('');
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [toasts, setToasts] = useState<AppToast[]>([]);
 
   useEffect(() => {
@@ -288,13 +289,34 @@ export default function App() {
           >
             <Menu size={18} />
           </button>
-          <div className="brand">
-            <div className="brand-mark">
-            <Warehouse size={24} />
-            </div>
-            <div className="brand-copy">
-            <strong>Papelão Gestor</strong>
-            <span>Controle da distribuidora</span>
+          <div className={profileMenuOpen ? 'profile-menu open' : 'profile-menu'}>
+            <button
+              className="brand profile-trigger"
+              onClick={() => setProfileMenuOpen((current) => !current)}
+              type="button"
+              aria-expanded={profileMenuOpen}
+              title="Perfil e sair"
+            >
+              <div className="brand-mark">
+                <Warehouse size={24} />
+              </div>
+              <div className="brand-copy">
+                <strong>Papelão Gestor</strong>
+                <span>Controle da distribuidora</span>
+              </div>
+            </button>
+            <div className="profile-popover">
+              <div className="profile-popover-head">
+                <div className="profile-avatar">RP</div>
+                <div>
+                  <strong>{data.currentProfile?.name || 'Administrador'}</strong>
+                  <span>{session.user.email}</span>
+                </div>
+              </div>
+              <button className="profile-logout" onClick={() => supabase.auth.signOut()} type="button">
+                <LogOut size={17} />
+                Sair
+              </button>
             </div>
           </div>
         </div>
@@ -317,23 +339,6 @@ export default function App() {
           })}
         </nav>
 
-        <div className="sidebar-profile">
-          <div className="profile-avatar">RP</div>
-          <div className="sidebar-profile-copy">
-            <strong>{data.currentProfile?.name || 'Administrador'}</strong>
-            <span>{session.user.email}</span>
-          </div>
-        </div>
-
-        <button
-          className="nav-button exit"
-          onClick={() => supabase.auth.signOut()}
-          type="button"
-          title={sidebarExpanded ? undefined : 'Sair'}
-        >
-          <LogOut size={18} />
-          <span className="nav-label">Sair</span>
-        </button>
       </aside>
 
       <main className="main">
