@@ -1958,8 +1958,7 @@ tr:hover td {
   }
 
   .nav-button,
-  .sidebar.collapsed .nav-button,
-  .exit {
+  .sidebar.collapsed .nav-button {
     border-radius: 13px;
     flex: 0 0 auto;
     gap: 8px;
@@ -1967,13 +1966,6 @@ tr:hover td {
     justify-content: center;
     min-height: 40px;
     padding: 8px 10px;
-  }
-
-  .exit {
-    border-color: #f0c7c2;
-    color: #a93e36;
-    margin-top: 0;
-    width: 100%;
   }
 
   .nav-button svg {
@@ -2164,6 +2156,19 @@ tr:hover td {
     padding: 16px;
   }
 
+  .panel-title-row {
+    align-items: stretch;
+    display: grid;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .panel-title-row .primary-button,
+  .panel-title-row .secondary-button,
+  .panel-title-row .small-button {
+    width: 100%;
+  }
+
   .panel h2 {
     font-size: 0.98rem;
     margin-bottom: 12px;
@@ -2208,7 +2213,6 @@ tr:hover td {
   }
 
   .panel-title-row {
-    align-items: flex-start;
     gap: 10px;
     margin-bottom: 12px;
   }
@@ -2349,6 +2353,60 @@ tr:hover td {
   .mobile-data-card-actions .small-button {
     min-width: 0;
     width: 100%;
+  }
+
+  .search-box {
+    border-radius: 12px;
+    margin-bottom: 10px;
+    min-height: 42px;
+  }
+
+  .search-box input {
+    font-size: 16px;
+    min-height: 40px;
+  }
+
+  .row-actions,
+  .form-actions,
+  .backup-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .row-actions .small-button,
+  .form-actions .secondary-button,
+  .form-actions .primary-button,
+  .backup-actions .primary-button,
+  .backup-actions .file-button {
+    justify-content: center;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .modal-backdrop {
+    align-items: stretch;
+    padding: 10px;
+  }
+
+  .modal-panel {
+    border-radius: 16px;
+    max-height: calc(100vh - 20px);
+    padding: 16px;
+    width: 100%;
+  }
+
+  .modal-header {
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .modal-header h2 {
+    font-size: 1.05rem;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
   }
 
   .social-row,
