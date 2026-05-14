@@ -87,7 +87,7 @@ const emptyData: AppData = {
   profiles: [],
 };
 
-const expenseLabels: Record<ExpenseCategory, string> = {
+const expenseLabels: Record<string, string> = {
   almoco: 'Almoco de funcionarios',
   frete: 'Frete',
   manutencao: 'Manutencao',
@@ -1977,7 +1977,7 @@ function ExpensesPage({ data, runAction, canManage }: PageProps & { canManage: b
   const [viewing, setViewing] = useState<Expense | null>(null);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [deleting, setDeleting] = useState<Expense | null>(null);
-  const filtered = filterBy(data.expenses, query, (expense) => `${expense.description} ${expenseLabels[expense.category]} ${expense.notes || ''}`);
+  const filtered = filterBy(data.expenses, query, (expense) => `${expense.description} ${expenseCategoryLabel(expense.category)} ${expense.notes || ''}`);
   const closeExpenseModal = () => {
     setCreating(false);
     setEditing(null);
@@ -2002,7 +2002,7 @@ function ExpensesPage({ data, runAction, canManage }: PageProps & { canManage: b
           headers={['Descricao', 'Categoria', 'Valor', 'Data', 'Acoes']}
           rows={filtered.map((expense) => [
             expense.description,
-            expenseLabels[expense.category],
+            expenseCategoryLabel(expense.category),
             formatMoney(expense.amount),
             formatDateTime(expense.occurred_at),
             <div className="row-actions">
@@ -2026,6 +2026,7 @@ function ExpensesPage({ data, runAction, canManage }: PageProps & { canManage: b
         <Modal title={editing ? 'Editar despesa' : 'Nova despesa'} onClose={closeExpenseModal}>
           <ExpenseForm
             expense={editing}
+            expenses={data.expenses}
             onCancel={closeExpenseModal}
             onSubmit={(input) =>
               runAction(editing ? 'Despesa atualizada.' : 'Despesa registrada.', async () => {
@@ -2088,23 +2089,29 @@ function ExpensesPage({ data, runAction, canManage }: PageProps & { canManage: b
 
 function ExpenseForm({
   expense,
+  expenses,
   onSubmit,
   onCancel,
 }: {
   expense: Expense | null;
+  expenses: Expense[];
   onSubmit: (input: { description: string; category: ExpenseCategory; amount: number; occurred_at: string; notes: string }) => void;
   onCancel: () => void;
 }) {
   const [description, setDescription] = useState(expense?.description || '');
-  const [category, setCategory] = useState<ExpenseCategory>(expense?.category || 'almoco');
-  const [amount, setAmount] = useState(expense?.amount || 0);
+  const [category, setCategory] = useState(expense?.category || '');
+  const [amount, setAmount] = useState(currencyInputValue(expense?.amount || 0));
   const [date, setDate] = useState(expense ? toInputDateTime(expense.occurred_at) : toInputDateTime());
   const [notes, setNotes] = useState(expense?.notes || '');
+  const categoryOptions = Array.from(
+    new Set([...Object.keys(expenseLabels), ...expenses.map((item) => item.category)].filter(Boolean)),
+  ).sort((a, b) => expenseCategoryLabel(a).localeCompare(expenseCategoryLabel(b)));
+  const amountNumber = parseCurrencyInput(amount);
 
   useEffect(() => {
     setDescription(expense?.description || '');
-    setCategory(expense?.category || 'almoco');
-    setAmount(expense?.amount || 0);
+    setCategory(expense?.category || '');
+    setAmount(currencyInputValue(expense?.amount || 0));
     setDate(expense ? toInputDateTime(expense.occurred_at) : toInputDateTime());
     setNotes(expense?.notes || '');
   }, [expense]);
@@ -2114,7 +2121,7 @@ function ExpenseForm({
       className="form-grid"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit({ description, category, amount, occurred_at: fromInputDateTime(date), notes });
+        onSubmit({ description, category: category.trim(), amount: amountNumber, occurred_at: fromInputDateTime(date), notes });
       }}
     >
       <label>
@@ -2123,17 +2130,31 @@ function ExpenseForm({
       </label>
       <label>
         Categoria
-        <select value={category} onChange={(event) => setCategory(event.target.value as ExpenseCategory)}>
-          {Object.entries(expenseLabels).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
+        <input
+          list="expense-category-options"
+          value={category}
+          onChange={(event) => setCategory(event.target.value)}
+          placeholder="Digite ou escolha uma categoria"
+          required
+        />
+        <datalist id="expense-category-options">
+          {categoryOptions.map((option) => (
+            <option key={option} value={option}>
+              {expenseCategoryLabel(option)}
             </option>
           ))}
-        </select>
+        </datalist>
       </label>
       <label>
         Valor
-        <input min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(Number(event.target.value))} type="number" required />
+        <input
+          inputMode="decimal"
+          onChange={(event) => setAmount(formatCurrencyInput(event.target.value))}
+          placeholder="R$ 0,00"
+          required
+          type="text"
+          value={amount}
+        />
       </label>
       <label>
         Data e hora
@@ -2147,7 +2168,7 @@ function ExpenseForm({
         <button className="secondary-button" onClick={onCancel} type="button">
           Cancelar
         </button>
-        <button className="primary-button" type="submit">
+        <button className="primary-button" disabled={!category.trim() || amountNumber <= 0} type="submit">
           <Save size={18} />
           Salvar
         </button>
@@ -2165,7 +2186,7 @@ function ExpenseDetails({ expense, compact = false }: { expense: Expense; compac
       </div>
       <div>
         <span>Categoria</span>
-        <strong>{expenseLabels[expense.category]}</strong>
+        <strong>{expenseCategoryLabel(expense.category)}</strong>
       </div>
       <div>
         <span>Valor</span>
@@ -2838,6 +2859,25 @@ function optionFromName(item: { id: string; name: string }) {
 
 function roundMoney(value: number) {
   return Math.round((value || 0) * 100) / 100;
+}
+
+function expenseCategoryLabel(category: string) {
+  return expenseLabels[category] || toTitle(category);
+}
+
+function currencyInputValue(value: number) {
+  return value > 0 ? formatMoney(value) : '';
+}
+
+function formatCurrencyInput(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (!digits) return '';
+  return formatMoney(Number(digits) / 100);
+}
+
+function parseCurrencyInput(value: string) {
+  const digits = value.replace(/\D/g, '');
+  return digits ? Number(digits) / 100 : 0;
 }
 
 function filterBy<T>(items: T[], query: string, getText: (item: T) => string) {
