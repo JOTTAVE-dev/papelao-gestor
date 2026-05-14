@@ -2132,7 +2132,8 @@ tr:hover td {
     transform: translateY(-1px);
   }
 
-  .bottom-fab-wrap {
+  .bottom-fab-wrap,
+  .bottom-menu-wrap {
     align-items: center;
     display: flex;
     justify-content: center;
@@ -2182,11 +2183,17 @@ tr:hover td {
     z-index: 4;
   }
 
-  .bottom-fab-wrap.open .bottom-create-popover {
+  .bottom-fab-wrap.open .bottom-create-popover,
+  .bottom-menu-wrap.open .bottom-create-popover {
     animation: bottom-popover-rise 180ms ease;
     opacity: 1;
     pointer-events: auto;
     transform: translate(-50%, 0) scale(1);
+  }
+
+  .bottom-side-popover {
+    bottom: 64px;
+    min-width: 190px;
   }
 
   .bottom-create-popover button {
@@ -2221,6 +2228,10 @@ tr:hover td {
 
   .bottom-create-popover button:nth-child(3) svg {
     color: var(--danger);
+  }
+
+  .bottom-create-popover button:nth-child(4) svg {
+    color: #7c3aed;
   }
 
   .page-heading h1 svg {

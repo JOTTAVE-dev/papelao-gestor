@@ -159,7 +159,7 @@ export default function App() {
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [sidebarHovered, setSidebarHovered] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const [mobileCreateOpen, setMobileCreateOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState<'config' | 'products' | 'create' | null>(null);
   const [toasts, setToasts] = useState<AppToast[]>([]);
 
   useEffect(() => {
@@ -252,7 +252,7 @@ export default function App() {
 
   function navigateTo(nextPage: Page) {
     setPage(nextPage);
-    setMobileCreateOpen(false);
+    setMobileMenuOpen(null);
     setProfileMenuOpen(false);
   }
 
@@ -420,15 +420,47 @@ export default function App() {
         {page === 'backup' && <BackupPage runAction={runAction} />}
       </main>
       <nav className="mobile-bottom-nav" aria-label="Navegação principal mobile">
-        <button className={page === 'backup' ? 'bottom-nav-item active' : 'bottom-nav-item'} onClick={() => navigateTo('backup')} type="button">
-          <Settings size={19} />
-          <span>Config</span>
-        </button>
-        <button className={page === 'products' ? 'bottom-nav-item active' : 'bottom-nav-item'} onClick={() => navigateTo('products')} type="button">
-          <Boxes size={19} />
-          <span>Produtos</span>
-        </button>
-        <div className={mobileCreateOpen ? 'bottom-fab-wrap open' : 'bottom-fab-wrap'}>
+        <div className={mobileMenuOpen === 'config' ? 'bottom-menu-wrap open' : 'bottom-menu-wrap'}>
+          <div className="bottom-create-popover bottom-side-popover">
+            <button type="button" onClick={() => navigateTo('backup')}>
+              <ShieldCheck size={17} />
+              Segurança e Backup
+            </button>
+          </div>
+          <button
+            className={page === 'backup' || mobileMenuOpen === 'config' ? 'bottom-nav-item active' : 'bottom-nav-item'}
+            onClick={() => setMobileMenuOpen((current) => (current === 'config' ? null : 'config'))}
+            type="button"
+          >
+            <Settings size={19} />
+            <span>Config</span>
+          </button>
+        </div>
+        <div className={mobileMenuOpen === 'products' ? 'bottom-menu-wrap open' : 'bottom-menu-wrap'}>
+          <div className="bottom-create-popover bottom-side-popover">
+            <button type="button" onClick={() => navigateTo('products')}>
+              <Boxes size={17} />
+              Produtos/Estoque
+            </button>
+            <button type="button" onClick={() => navigateTo('customers')}>
+              <Users size={17} />
+              Clientes
+            </button>
+            <button type="button" onClick={() => navigateTo('suppliers')}>
+              <Truck size={17} />
+              Fornecedores
+            </button>
+          </div>
+          <button
+            className={['products', 'customers', 'suppliers'].includes(page) || mobileMenuOpen === 'products' ? 'bottom-nav-item active' : 'bottom-nav-item'}
+            onClick={() => setMobileMenuOpen((current) => (current === 'products' ? null : 'products'))}
+            type="button"
+          >
+            <Boxes size={19} />
+            <span>Produtos</span>
+          </button>
+        </div>
+        <div className={mobileMenuOpen === 'create' ? 'bottom-fab-wrap open' : 'bottom-fab-wrap'}>
           <div className="bottom-create-popover">
             <button type="button" onClick={() => navigateTo('entries')}>
               <PackagePlus size={17} />
@@ -442,12 +474,16 @@ export default function App() {
               <CircleDollarSign size={17} />
               Despesas
             </button>
+            <button type="button" onClick={() => navigateTo('voice')}>
+              <Mic size={17} />
+              Lançar por Áudio
+            </button>
           </div>
           <button
-            className={['entries', 'sales', 'expenses'].includes(page) || mobileCreateOpen ? 'bottom-fab active' : 'bottom-fab'}
-            onClick={() => setMobileCreateOpen((current) => !current)}
+            className={['entries', 'sales', 'expenses', 'voice'].includes(page) || mobileMenuOpen === 'create' ? 'bottom-fab active' : 'bottom-fab'}
+            onClick={() => setMobileMenuOpen((current) => (current === 'create' ? null : 'create'))}
             type="button"
-            aria-expanded={mobileCreateOpen}
+            aria-expanded={mobileMenuOpen === 'create'}
             aria-label="Abrir ações de lançamento"
           >
             <Plus size={28} />
