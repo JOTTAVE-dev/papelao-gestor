@@ -1883,25 +1883,28 @@ tr:hover td {
   }
 
   .heading-actions {
-    flex-wrap: nowrap;
-    margin-inline: -2px;
-    overflow-x: auto;
-    padding: 2px 2px 4px;
-    scrollbar-width: none;
-    width: calc(100% + 4px);
-  }
-
-  .heading-actions::-webkit-scrollbar {
-    display: none;
+    display: grid;
+    gap: 6px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
   }
 
   .heading-actions .secondary-button,
   .heading-actions .primary-button {
-    border-radius: 12px;
+    border-radius: 11px;
+    font-size: 0.74rem;
+    gap: 5px;
+    min-height: 38px;
+    min-width: 0;
+    padding: 7px 5px;
+    white-space: normal;
+  }
+
+  .heading-actions .secondary-button svg,
+  .heading-actions .primary-button svg {
     flex: 0 0 auto;
-    min-height: 40px;
-    padding: 8px 10px;
-    white-space: nowrap;
+    height: 15px;
+    width: 15px;
   }
 
   .content-grid {
