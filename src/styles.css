@@ -1884,6 +1884,9 @@ tr:hover td {
   }
 
   .main {
+    align-content: start;
+    display: grid;
+    gap: 10px;
     min-height: auto;
     padding: 6px 0 22px;
   }
@@ -1901,7 +1904,7 @@ tr:hover td {
     align-items: center;
     flex-direction: row;
     gap: 10px;
-    margin-bottom: 14px;
+    margin-bottom: 0;
   }
 
   .topbar-search {
@@ -1923,7 +1926,7 @@ tr:hover td {
 
   .page-heading {
     gap: 12px;
-    margin-bottom: 14px;
+    margin-bottom: 0;
   }
 
   .eyebrow {
