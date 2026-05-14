@@ -222,6 +222,21 @@ export default function App() {
     setError('');
   }, [error, session]);
 
+  useEffect(() => {
+    const isSuperAdmin = data.currentProfile?.role === 'super_admin';
+    const supportOwnerId = isSuperAdmin ? data.currentProfile?.support_company_owner_id || null : null;
+    const supportRequired = Boolean(session) && isSuperAdmin && !supportOwnerId && page !== 'admin' && page !== 'backup';
+
+    if (!supportRequired) return;
+    showToast({
+      variant: 'warning',
+      title: 'Selecione uma empresa para suporte',
+      description: 'Escolha a empresa na tela Admin para evitar dados misturados.',
+      actionLabel: 'Abrir Admin',
+      onAction: () => setPage('admin'),
+    });
+  }, [data.currentProfile, page, session]);
+
   if (!hasSupabaseConfig) {
     return <MissingConfig />;
   }
@@ -258,17 +273,6 @@ export default function App() {
         }
       : data;
   const visibleNavItems = navItems.filter((item) => item.page !== 'admin' || canOpenAdmin);
-
-  useEffect(() => {
-    if (!supportRequired) return;
-    showToast({
-      variant: 'warning',
-      title: 'Selecione uma empresa para suporte',
-      description: 'Escolha a empresa na tela Admin para evitar dados misturados.',
-      actionLabel: 'Abrir Admin',
-      onAction: () => setPage('admin'),
-    });
-  }, [supportRequired]);
 
   return (
     <div className={sidebarExpanded ? 'shell sidebar-expanded' : 'shell sidebar-collapsed'}>
