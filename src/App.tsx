@@ -4,6 +4,7 @@ import type { Session } from '@supabase/supabase-js';
 import {
   AlertTriangle,
   Archive,
+  ArrowLeft,
   Bell,
   Boxes,
   Check,
@@ -148,10 +149,43 @@ const navItems = [
   { page: 'backup' as Page, label: 'Backup', icon: Settings },
 ];
 
+const pageRoutes: Record<Page, string> = {
+  dashboard: '/',
+  products: '/produtos',
+  entries: '/entradas',
+  sales: '/vendas',
+  voice: '/audio',
+  expenses: '/despesas',
+  reports: '/relatorios',
+  suppliers: '/fornecedores',
+  customers: '/clientes',
+  admin: '/admin',
+  backup: '/backup',
+};
+
+const routePages = Object.entries(pageRoutes).map(([pageName, route]) => ({
+  page: pageName as Page,
+  route,
+}));
+
+function cleanPath(pathname: string) {
+  return pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
+}
+
+function pageFromPath(pathname: string) {
+  const path = cleanPath(pathname);
+  return routePages.find((item) => item.route === path)?.page || null;
+}
+
+function pageFromLocation() {
+  if (typeof window === 'undefined') return 'dashboard' as Page;
+  return pageFromPath(window.location.pathname) || 'dashboard';
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [page, setPage] = useState<Page>('dashboard');
+  const [page, setPage] = useState<Page>(() => pageFromLocation());
   const [data, setData] = useState<AppData>(emptyData);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState('');
@@ -173,6 +207,27 @@ export default function App() {
     });
 
     return () => listener.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    const currentPage = pageFromLocation();
+    const currentRoute = pageRoutes[currentPage];
+
+    setPage(currentPage);
+    if (!pageFromPath(window.location.pathname) || cleanPath(window.location.pathname) !== currentRoute) {
+      window.history.replaceState({ page: currentPage }, '', currentRoute);
+    } else {
+      window.history.replaceState({ page: currentPage }, '', window.location.href);
+    }
+
+    function handlePopState() {
+      setPage(pageFromLocation());
+      setMobileMenuOpen(null);
+      setProfileMenuOpen(false);
+    }
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   async function refresh() {
@@ -250,11 +305,27 @@ export default function App() {
       : data;
   const visibleNavItems = navItems.filter((item) => item.page !== 'admin' || canOpenAdmin);
 
-  function navigateTo(nextPage: Page) {
-    setPage(nextPage);
+  function navigateTo(nextPage: Page, options?: { replace?: boolean }) {
+    const targetPage = nextPage === 'admin' && data.currentProfile && !canOpenAdmin ? 'dashboard' : nextPage;
+
+    setPage(targetPage);
     setMobileMenuOpen(null);
     setProfileMenuOpen(false);
+
+    const targetRoute = pageRoutes[targetPage];
+    if (cleanPath(window.location.pathname) === targetRoute) return;
+
+    if (options?.replace) {
+      window.history.replaceState({ page: targetPage }, '', targetRoute);
+    } else {
+      window.history.pushState({ page: targetPage }, '', targetRoute);
+    }
   }
+
+  useEffect(() => {
+    if (page !== 'admin' || !data.currentProfile || canOpenAdmin) return;
+    navigateTo('dashboard', { replace: true });
+  }, [page, data.currentProfile, canOpenAdmin]);
 
   useEffect(() => {
     if (!session || !supportRequired) return;
@@ -263,7 +334,7 @@ export default function App() {
       title: 'Selecione uma empresa para suporte',
       description: 'Escolha a empresa na tela Admin para evitar dados misturados.',
       actionLabel: 'Abrir Admin',
-      onAction: () => setPage('admin'),
+      onAction: () => navigateTo('admin'),
     });
   }, [session, supportRequired]);
 
@@ -380,6 +451,12 @@ export default function App() {
         </header>
 
         <section className="page-heading">
+          {page !== 'dashboard' && (
+            <button className="mobile-home-back" onClick={() => navigateTo('dashboard')} type="button" aria-label="Voltar para a tela inicial">
+              <ArrowLeft size={18} />
+              <span>Voltar</span>
+            </button>
+          )}
           <div>
             <span className="eyebrow">RODPEL • Sistema de controle</span>
             <h1>
