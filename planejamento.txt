@@ -1,0 +1,48 @@
+# Papelão Gestor - Plano da primeira versão
+
+## Resumo
+Criar um sistema web local para controle de distribuidora de papelão, rodando no navegador, com dados salvos em IndexedDB/local database do próprio navegador. A primeira versão terá login fixo de gestor, dashboard diário, cadastro de produtos, fornecedores e clientes, entradas de mercadoria, vendas/saídas, estoque automático, despesas e backup em JSON.
+
+## Principais Funcionalidades
+- Login local com usuário fixo de gestor: `admin` e senha inicial definida no código, exibida apenas em configuração/documentação interna.
+- Dashboard inicial com vendas do dia, despesas do dia, saldo estimado do dia, produtos com baixo estoque e últimas movimentações.
+- Produtos: nome, tipo/categoria, preço por kg, estoque atual em kg, estoque mínimo, status ativo/inativo.
+- Fornecedores e clientes: cadastro simples com nome, telefone/documento opcional e observações.
+- Entradas: produto, fornecedor, peso em kg, preço total ou preço por kg, data/hora, observação; ao salvar, soma no estoque.
+- Vendas/saídas: cliente, produto, peso vendido em kg, preço vindo automaticamente do produto, total calculado; bloquear venda se não houver estoque suficiente.
+- Despesas: descrição, categoria, valor, data/hora e observação; categorias iniciais: almoço de funcionários, frete, manutenção, combustível, outros.
+- Backup: exportar todos os dados para JSON e importar/restaurar JSON validado.
+
+## Implementação
+- Criar app frontend com Vite + React + TypeScript, sem backend na primeira versão.
+- Usar IndexedDB para persistência local, com camada única de repositório para produtos, fornecedores, clientes, entradas, vendas e despesas.
+- Usar moeda brasileira `BRL`, datas em `pt-BR` e timezone local `America/Fortaleza`.
+- Estruturar telas principais: Login, Dashboard, Produtos/Estoque, Entradas, Vendas/Saídas, Despesas, Fornecedores, Clientes e Backup/Configurações.
+- Todas as movimentações devem manter histórico: não apagar estoque diretamente; estoque atual será atualizado por entradas e vendas, com opção de ajuste manual registrada como movimentação administrativa se necessário.
+- Interface deve ser limpa e operacional, feita para uso diário em empresa pequena: tabelas pesquisáveis, formulários diretos, botões claros e feedback de sucesso/erro.
+
+## Tipos/Dados
+- `Product`: id, name, category, pricePerKg, stockKg, minStockKg, active, createdAt, updatedAt.
+- `Supplier`: id, name, phone, document, notes, createdAt.
+- `Customer`: id, name, phone, document, notes, createdAt.
+- `StockEntry`: id, productId, supplierId, weightKg, unitCost, totalCost, occurredAt, notes.
+- `Sale`: id, productId, customerId, weightKg, unitPrice, totalPrice, occurredAt, notes.
+- `Expense`: id, description, category, amount, occurredAt, notes.
+- `BackupPayload`: version, exportedAt, products, suppliers, customers, entries, sales, expenses.
+
+## Testes e Aceitação
+- Testar login com credenciais corretas e incorretas.
+- Testar criação/edição/inativação de produto e cálculo de preço por kg.
+- Testar entrada aumentando estoque corretamente.
+- Testar venda reduzindo estoque e bloqueando quantidade maior que o disponível.
+- Testar dashboard com totais do dia e alertas de estoque mínimo.
+- Testar despesas entrando no resumo financeiro diário.
+- Testar exportação e importação de backup JSON.
+- Validar build final com `npm run build`.
+
+## Assumptions
+- Primeira versão será usada em um único computador/navegador.
+- A unidade principal de estoque será kg.
+- O preço da venda vem do cadastro do produto e não será editável na venda nesta versão.
+- O sistema terá cadastro separado de fornecedores e clientes.
+- Vendas com estoque insuficiente serão bloqueadas.

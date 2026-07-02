@@ -432,6 +432,17 @@ export default function App() {
             <input placeholder="Buscar produtos, vendas, entradas ou relatórios..." />
           </div>
           <div className="topbar-actions">
+            {page !== 'dashboard' && (
+              <button
+                className="icon-button mobile-home-back"
+                onClick={() => navigateTo('dashboard')}
+                title="Voltar para a tela inicial"
+                type="button"
+                aria-label="Voltar para a tela inicial"
+              >
+                <ArrowLeft size={18} />
+              </button>
+            )}
             <button
               className="icon-button"
               onClick={() => {
@@ -451,12 +462,6 @@ export default function App() {
         </header>
 
         <section className="page-heading">
-          {page !== 'dashboard' && (
-            <button className="mobile-home-back" onClick={() => navigateTo('dashboard')} type="button" aria-label="Voltar para a tela inicial">
-              <ArrowLeft size={18} />
-              <span>Voltar</span>
-            </button>
-          )}
           <div>
             <span className="eyebrow">RODPEL • Sistema de controle</span>
             <h1>

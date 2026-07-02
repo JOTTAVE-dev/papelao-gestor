@@ -2075,24 +2075,16 @@ tr:hover td {
     padding-right: 48px;
   }
 
+  .shell:not(.page-dashboard) .page-heading {
+    padding-right: 96px;
+  }
+
   .page-heading > div {
     min-width: 0;
   }
 
   .mobile-home-back {
-    align-items: center;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
-    color: var(--text);
     display: inline-flex;
-    flex: 0 0 auto;
-    font-size: 0.82rem;
-    font-weight: 850;
-    gap: 6px;
-    height: 38px;
-    padding: 0 10px;
   }
 
   .page-dashboard .mobile-home-back {
