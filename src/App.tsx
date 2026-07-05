@@ -39,6 +39,7 @@ import {
   createCustomer,
   createSupplier,
   createStockEntry,
+  createProduction,
   createUser,
   clearSupportCompany,
   deleteExpense,
@@ -47,6 +48,8 @@ import {
   deleteSale,
   deleteSupplier,
   deleteStockEntry,
+  deleteProduction,
+  deleteCustomerProductPrice,
   exportBackup,
   importBackup,
   loadAppData,
@@ -55,14 +58,16 @@ import {
   saveExpense,
   saveProduct,
   saveSupplier,
+  saveCustomerProductPrice,
   setSupportCompany,
   updateCompanyLimit,
   updateSale,
   updateStockEntry,
+  updateProduction,
   updateUserRole,
 } from './lib/repository';
 import { formatDateTime, formatKg, formatMoney, fromInputDateTime, todayRange, toInputDateTime } from './lib/format';
-import type { AppData, Customer, Expense, ExpenseCategory, Page, Product, Sale, StockEntry, Supplier } from './lib/types';
+import type { AppData, Customer, Expense, ExpenseCategory, Page, Product, Production, Sale, StockEntry, Supplier } from './lib/types';
 
 type ToastVariant = 'success' | 'info' | 'warning' | 'error';
 
@@ -83,6 +88,8 @@ const emptyData: AppData = {
   entries: [],
   sales: [],
   expenses: [],
+  productions: [],
+  customerPrices: [],
   currentProfile: null,
   profiles: [],
 };
@@ -139,6 +146,7 @@ const navItems = [
   { page: 'dashboard' as Page, label: 'Dashboard', icon: LayoutDashboard },
   { page: 'products' as Page, label: 'Produtos e Estoque', icon: Boxes },
   { page: 'entries' as Page, label: 'Entradas', icon: PackagePlus },
+  { page: 'production' as Page, label: 'Producao', icon: Warehouse },
   { page: 'sales' as Page, label: 'Vendas', icon: ShoppingCart },
   { page: 'voice' as Page, label: 'Lançar por Áudio', icon: Mic },
   { page: 'expenses' as Page, label: 'Despesas', icon: ReceiptText },
@@ -153,6 +161,7 @@ const pageRoutes: Record<Page, string> = {
   dashboard: '/',
   products: '/produtos',
   entries: '/entradas',
+  production: '/producao',
   sales: '/vendas',
   voice: '/audio',
   expenses: '/despesas',
@@ -496,11 +505,12 @@ export default function App() {
             {page === 'dashboard' && <Dashboard data={scopedData} />}
             {page === 'products' && <ProductsPage data={scopedData} runAction={runAction} isAdmin={isSuperAdmin} />}
             {page === 'entries' && <EntriesPage data={scopedData} runAction={runAction} isAdmin={isSuperAdmin} />}
+            {page === 'production' && <ProductionPage data={scopedData} runAction={runAction} isAdmin={canManageRecords} />}
             {page === 'sales' && <SalesPage data={scopedData} runAction={runAction} isAdmin={isSuperAdmin} />}
             {page === 'voice' && <VoicePage data={scopedData} runAction={runAction} />}
             {page === 'expenses' && <ExpensesPage data={scopedData} runAction={runAction} canManage={canManageRecords} />}
             {page === 'suppliers' && <ContactsPage type="suppliers" data={scopedData} runAction={runAction} canManage={canManageRecords} />}
-            {page === 'customers' && <ContactsPage type="customers" data={scopedData} runAction={runAction} canManage={canManageRecords} />}
+            {page === 'customers' && <><ContactsPage type="customers" data={scopedData} runAction={runAction} canManage={canManageRecords} /><CustomerPricesPanel data={scopedData} runAction={runAction} /></>}
             {page === 'admin' && canOpenAdmin && <AdminPage data={data} runAction={runAction} />}
             {page === 'reports' && <ReportsPage data={scopedData} />}
           </>
@@ -558,6 +568,10 @@ export default function App() {
               <ShoppingCart size={17} />
               Vendas
             </button>
+            <button type="button" onClick={() => navigateTo('production')}>
+              <Warehouse size={17} />
+              Producao
+            </button>
             <button type="button" onClick={() => navigateTo('expenses')}>
               <CircleDollarSign size={17} />
               Despesas
@@ -568,7 +582,7 @@ export default function App() {
             </button>
           </div>
           <button
-            className={['entries', 'sales', 'expenses', 'voice'].includes(page) || mobileMenuOpen === 'create' ? 'bottom-fab active' : 'bottom-fab'}
+            className={['entries', 'production', 'sales', 'expenses', 'voice'].includes(page) || mobileMenuOpen === 'create' ? 'bottom-fab active' : 'bottom-fab'}
             onClick={() => setMobileMenuOpen((current) => (current === 'create' ? null : 'create'))}
             type="button"
             aria-expanded={mobileMenuOpen === 'create'}
@@ -894,6 +908,7 @@ function Dashboard({ data }: { data: AppData }) {
   const maxTopTotal = Math.max(...topProducts.map((item) => item.total), 1);
   const recent = [
     ...data.entries.map((entry) => ({ kind: 'Entrada', at: entry.occurred_at, text: `${productName(data, entry.product_id)} +${formatKg(entry.weight_kg)}` })),
+    ...data.productions.map((production) => ({ kind: 'Producao', at: production.occurred_at, text: `${productName(data, production.finished_product_id)} +${formatKg(production.produced_kg)} (perda ${formatKg(production.loss_kg)})` })),
     ...data.sales.map((sale) => ({ kind: 'Venda', at: sale.occurred_at, text: `${productName(data, sale.product_id)} -${formatKg(sale.weight_kg)}` })),
     ...data.expenses.map((expense) => ({ kind: 'Despesa', at: expense.occurred_at, text: `${expense.description} ${formatMoney(expense.amount)}` })),
   ]
@@ -1107,6 +1122,7 @@ function VoicePage({ data, runAction }: PageProps) {
           price_per_kg: parsed.unitPrice || parsed.totalValue,
           min_stock_kg: 0,
           active: true,
+          product_type: 'produto_acabado',
         });
         return;
       }
@@ -1340,15 +1356,17 @@ function ProductsPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boole
             Novo produto
           </button>
         </div>
+        {data.products.some((product) => !product.product_type) && <div className="notice warning">Existem produtos antigos sem classificacao. Edite cada um e informe se e materia-prima ou produto acabado antes de movimenta-lo.</div>}
         <PanelSearch value={query} onChange={setQuery} placeholder="Buscar produto por nome ou categoria" />
         <Table
           empty="Nenhum produto cadastrado."
-          headers={isAdmin ? ['Produto', 'Preco/kg', 'Estoque', 'Minimo', 'Status', 'Ações'] : ['Produto', 'Preco/kg', 'Estoque', 'Minimo', 'Status', '']}
+          headers={isAdmin ? ['Produto', 'Tipo', 'Preco/kg', 'Custo medio', 'Estoque', 'Status', 'Ações'] : ['Produto', 'Tipo', 'Preco/kg', 'Custo medio', 'Estoque', 'Status', '']}
           rows={filtered.map((product) => [
             <strong>{product.name}</strong>,
+            product.product_type === 'materia_prima' ? 'Materia-prima' : product.product_type === 'produto_acabado' ? 'Produto acabado' : 'Classificar',
             formatMoney(product.price_per_kg),
+            formatMoney(product.average_cost || 0),
             formatKg(product.stock_kg),
-            formatKg(product.min_stock_kg),
             product.active ? 'Ativo' : 'Inativo',
             <div className="row-actions">
               <button className="small-button" onClick={() => setViewing(product)} type="button">
@@ -1402,6 +1420,9 @@ function ProductsPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boole
               <span>Preco por kg</span>
               <strong>{formatMoney(viewing.price_per_kg)}</strong>
             </div>
+            <div><span>Tipo</span><strong>{viewing.product_type === 'materia_prima' ? 'Materia-prima' : viewing.product_type === 'produto_acabado' ? 'Produto acabado' : 'Nao classificado'}</strong></div>
+            <div><span>Custo medio</span><strong>{formatMoney(viewing.average_cost || 0)}</strong></div>
+            <div><span>Valor em estoque</span><strong>{formatMoney(viewing.stock_value || 0)}</strong></div>
             <div>
               <span>Estoque atual</span>
               <strong>{formatKg(viewing.stock_kg)}</strong>
@@ -1487,6 +1508,7 @@ function ProductForm({
     stock_kg?: number;
     min_stock_kg: number;
     active: boolean;
+    product_type: 'materia_prima' | 'produto_acabado';
   }) => void;
   onCancel: () => void;
 }) {
@@ -1496,6 +1518,7 @@ function ProductForm({
   const [stock, setStock] = useState(product ? String(product.stock_kg) : '');
   const [minimum, setMinimum] = useState(product ? String(product.min_stock_kg) : '');
   const [active, setActive] = useState(product?.active ?? true);
+  const [productType, setProductType] = useState<'materia_prima' | 'produto_acabado'>(product?.product_type || 'produto_acabado');
   const productNameOptions = Array.from(new Set(products.map((item) => item.name).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   const categoryOptions = Array.from(new Set(products.map((item) => item.category).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   const duplicate = products.some(
@@ -1509,6 +1532,7 @@ function ProductForm({
     setStock(product ? String(product.stock_kg) : '');
     setMinimum(product ? String(product.min_stock_kg) : '');
     setActive(product?.active ?? true);
+    setProductType(product?.product_type || 'produto_acabado');
   }, [product]);
 
   return (
@@ -1524,6 +1548,7 @@ function ProductForm({
           stock_kg: product ? undefined : Number(stock || 0),
           min_stock_kg: Number(minimum || 0),
           active,
+          product_type: productType,
         });
       }}
     >
@@ -1546,6 +1571,7 @@ function ProductForm({
           ))}
         </datalist>
       </label>
+      <Select label="Tipo" value={productType} onChange={(value) => setProductType(value as 'materia_prima' | 'produto_acabado')} options={[{ value: 'materia_prima', label: 'Materia-prima' }, { value: 'produto_acabado', label: 'Produto acabado' }]} />
       <label>
         Preco por kg
         <input min="0" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="0,00" type="number" required />
@@ -1580,7 +1606,7 @@ function ProductForm({
 }
 
 function EntriesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean }) {
-  const activeProducts = data.products.filter((product) => product.active);
+  const activeProducts = data.products.filter((product) => product.active && product.product_type === 'materia_prima');
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(false);
   const [viewing, setViewing] = useState<StockEntry | null>(null);
@@ -1884,8 +1910,61 @@ function EntryDetails({ entry, data, compact = false }: { entry: StockEntry; dat
   );
 }
 
+function ProductionPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean }) {
+  const [editing, setEditing] = useState<Production | null>(null);
+  const [creating, setCreating] = useState(false);
+  const rawMaterials = data.products.filter((p) => p.active && p.product_type === 'materia_prima');
+  const finishedProducts = data.products.filter((p) => p.active && p.product_type === 'produto_acabado');
+  const close = () => { setCreating(false); setEditing(null); };
+  return <div className="admin-layout">
+    <section className="panel">
+      <div className="panel-title-row"><div><h2>Historico de producao</h2><span className="muted-text">Transformacao de materia-prima em produtos acabados</span></div><button className="primary-button" onClick={() => setCreating(true)} type="button"><Plus size={18}/>Nova producao</button></div>
+      <Table empty="Nenhuma producao registrada." headers={['Data','Materia-prima','Produto acabado','Consumido','Produzido','Perda','Rendimento','Custo','Acoes']} rows={data.productions.map((production) => [
+        formatDateTime(production.occurred_at), productName(data, production.raw_material_id), productName(data, production.finished_product_id), formatKg(production.consumed_kg), formatKg(production.produced_kg), formatKg(production.loss_kg), `${production.yield_percent.toFixed(2)}%`, formatMoney(production.transferred_cost),
+        isAdmin ? <div className="row-actions"><button className="small-button" onClick={() => setEditing(production)} type="button">Editar</button><button className="small-button danger-button" onClick={() => confirmAction('Excluir esta producao e reverter os estoques?', () => runAction('Producao excluida.', () => deleteProduction(production.id)))} type="button">Apagar</button></div> : ''
+      ])}/>
+    </section>
+    {(creating || editing) && <Modal title={editing ? 'Editar producao' : 'Nova producao'} onClose={close}><ProductionForm production={editing} rawMaterials={rawMaterials} finishedProducts={finishedProducts} onCancel={close} onSubmit={(input) => runAction(editing ? 'Producao atualizada.' : 'Producao registrada.', async () => { if (editing) await updateProduction(editing.id,input); else await createProduction(input); close(); })}/></Modal>}
+  </div>;
+}
+
+function ProductionForm({ production, rawMaterials, finishedProducts, onSubmit, onCancel }: {
+  production: Production | null; rawMaterials: Product[]; finishedProducts: Product[];
+  onSubmit: (input: { raw_material_id:string; finished_product_id:string; consumed_kg:number; produced_kg:number; occurred_at:string; notes:string }) => void; onCancel:()=>void;
+}) {
+  const [rawId,setRawId]=useState(production?.raw_material_id || rawMaterials[0]?.id || '');
+  const [finishedId,setFinishedId]=useState(production?.finished_product_id || finishedProducts[0]?.id || '');
+  const [consumed,setConsumed]=useState(production?.consumed_kg || 0);
+  const [produced,setProduced]=useState(production?.produced_kg || 0);
+  const [date,setDate]=useState(production ? toInputDateTime(production.occurred_at) : toInputDateTime());
+  const [notes,setNotes]=useState(production?.notes || '');
+  const raw=rawMaterials.find((p)=>p.id===rawId);
+  const loss=Math.max(consumed-produced,0); const productionYield=consumed>0 ? produced/consumed*100 : 0;
+  return <form className="form-grid" onSubmit={(event)=>{event.preventDefault();onSubmit({raw_material_id:rawId,finished_product_id:finishedId,consumed_kg:consumed,produced_kg:produced,occurred_at:fromInputDateTime(date),notes});}}>
+    <Select label="Materia-prima" value={rawId} onChange={setRawId} options={rawMaterials.map(optionFromName)}/>
+    <Select label="Produto acabado" value={finishedId} onChange={setFinishedId} options={finishedProducts.map(optionFromName)}/>
+    <label>Kg consumidos<input min="0.01" step="0.01" type="number" value={consumed} onChange={(e)=>setConsumed(Number(e.target.value))} required/></label>
+    <label>Kg produzidos<input min="0.01" max={consumed || undefined} step="0.01" type="number" value={produced} onChange={(e)=>setProduced(Number(e.target.value))} required/></label>
+    <label>Data e hora<input type="datetime-local" value={date} onChange={(e)=>setDate(e.target.value)} required/></label>
+    <label className="span-all">Observacao<textarea value={notes} onChange={(e)=>setNotes(e.target.value)}/></label>
+    <div className="notice neutral span-all">Disponivel: {formatKg(raw?.stock_kg || 0)} • Perda: {formatKg(loss)} • Rendimento: {productionYield.toFixed(2)}% • Custo estimado: {formatMoney((raw?.average_cost || 0)*consumed)}</div>
+    <div className="form-actions"><button className="secondary-button" onClick={onCancel} type="button">Cancelar</button><button className="primary-button" disabled={!rawId||!finishedId||consumed<=0||produced<=0||produced>consumed||Boolean(raw&&consumed>raw.stock_kg+(production?.raw_material_id===rawId?production.consumed_kg:0))} type="submit"><Save size={18}/>Salvar</button></div>
+  </form>;
+}
+
+function CustomerPricesPanel({ data, runAction }: PageProps) {
+  const [customerId,setCustomerId]=useState(''); const [productId,setProductId]=useState(''); const [price,setPrice]=useState('');
+  const finished=data.products.filter((p)=>p.active&&p.product_type==='produto_acabado');
+  return <section className="panel"><div className="panel-title-row"><div><h2>Precos por cliente</h2><span className="muted-text">Excecoes aplicadas automaticamente nas novas vendas</span></div></div>
+    <form className="form-grid" onSubmit={(event)=>{event.preventDefault();runAction('Preco do cliente salvo.',async()=>{await saveCustomerProductPrice({customer_id:customerId,product_id:productId,price_per_kg:Number(price)});setPrice('');});}}>
+      <Select label="Cliente" value={customerId} onChange={setCustomerId} options={data.customers.map(optionFromName)}/><Select label="Produto" value={productId} onChange={setProductId} options={finished.map(optionFromName)}/><label>Preco por kg<input min="0.01" step="0.01" type="number" value={price} onChange={(e)=>setPrice(e.target.value)} required/></label><div className="form-actions"><button className="primary-button" disabled={!customerId||!productId} type="submit"><Save size={18}/>Salvar preco</button></div>
+    </form>
+    <Table empty="Nenhum preco especifico cadastrado." headers={['Cliente','Produto','Preco/kg','']} rows={data.customerPrices.map((item)=>[customerName(data,item.customer_id),productName(data,item.product_id),formatMoney(item.price_per_kg),<button className="small-button danger-button" type="button" onClick={()=>runAction('Preco removido.',()=>deleteCustomerProductPrice(item.id))}>Remover</button>])}/>
+  </section>;
+}
+
 function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean }) {
-  const activeProducts = data.products.filter((product) => product.active);
+  const activeProducts = data.products.filter((product) => product.active && product.product_type === 'produto_acabado');
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(false);
   const [viewing, setViewing] = useState<Sale | null>(null);
@@ -2042,7 +2121,9 @@ function SaleForm({
   const [notes, setNotes] = useState(sale?.notes || '');
   const selectedProduct = data.products.find((product) => product.id === productId);
   const availableStock = selectedProduct ? selectedProduct.stock_kg + (sale?.product_id === productId ? sale.weight_kg : 0) : 0;
-  const unitPrice = selectedProduct?.price_per_kg || 0;
+  const customerPrice = data.customerPrices.find((price) => price.customer_id === customerId && price.product_id === productId)?.price_per_kg;
+  const suggestedPrice = customerPrice || selectedProduct?.price_per_kg || 0;
+  const [unitPrice, setUnitPrice] = useState(sale?.unit_price || 0);
   const total = roundMoney(unitPrice * weight);
   const blocked = Boolean(selectedProduct && weight > availableStock);
 
@@ -2052,7 +2133,12 @@ function SaleForm({
     setWeight(sale?.weight_kg || 0);
     setDate(sale ? toInputDateTime(sale.occurred_at) : toInputDateTime());
     setNotes(sale?.notes || '');
+    setUnitPrice(sale?.unit_price || 0);
   }, [sale]);
+
+  useEffect(() => {
+    if (!sale) setUnitPrice(suggestedPrice);
+  }, [customerId, productId, suggestedPrice, sale]);
 
   return (
     <form
@@ -2078,7 +2164,7 @@ function SaleForm({
       </label>
       <label>
         Preco por kg
-        <input value={unitPrice} readOnly type="number" />
+        <input min="0.01" step="0.01" value={unitPrice} onChange={(event) => setUnitPrice(Number(event.target.value))} type="number" required />
       </label>
       <label>
         Total da venda
@@ -2093,6 +2179,7 @@ function SaleForm({
         <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
       </label>
       {selectedProduct && <div className={blocked ? 'notice danger span-all' : 'notice neutral span-all'}>Estoque disponivel: {formatKg(availableStock)}</div>}
+      {selectedProduct && customerId && <div className="notice neutral span-all">Preco sugerido: {formatMoney(suggestedPrice)} por kg{unitPrice < suggestedPrice ? ` • desconto de ${formatMoney(suggestedPrice - unitPrice)} por kg` : ''}</div>}
       <div className="form-actions">
         <button className="secondary-button" onClick={onCancel} type="button">
           Cancelar
@@ -2870,12 +2957,15 @@ function ReportsPage({ data }: { data: AppData }) {
   const sales = data.sales.filter((sale) => inPeriod(sale.occurred_at));
   const expenses = data.expenses.filter((expense) => inPeriod(expense.occurred_at));
   const entries = data.entries.filter((entry) => inPeriod(entry.occurred_at));
+  const productions = data.productions.filter((production) => inPeriod(production.occurred_at));
   const totalSales = sales.reduce((sum, sale) => sum + sale.total_price, 0);
   const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
   const soldKg = sales.reduce((sum, sale) => sum + sale.weight_kg, 0);
   const entryKg = entries.reduce((sum, entry) => sum + entry.weight_kg, 0);
   const lowStock = data.products.filter((product) => product.active && product.stock_kg <= product.min_stock_kg);
   const averageTicket = sales.length ? totalSales / sales.length : 0;
+  const producedKg = productions.reduce((sum, production) => sum + production.produced_kg, 0);
+  const lossKg = productions.reduce((sum, production) => sum + production.loss_kg, 0);
 
   const salesRows = [...sales]
     .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
@@ -2894,6 +2984,9 @@ function ReportsPage({ data }: { data: AppData }) {
       expense.description,
       formatMoney(expense.amount),
     ]);
+  const productionRows = [...productions].sort((a,b)=>b.occurred_at.localeCompare(a.occurred_at)).map((production)=>[
+    formatDateTime(production.occurred_at), productName(data,production.finished_product_id), formatKg(production.consumed_kg), formatKg(production.produced_kg), formatKg(production.loss_kg), `${production.yield_percent.toFixed(2)}%`, formatMoney(production.transferred_cost)
+  ]);
   const stockRows = [...data.products]
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((product) => [
@@ -2939,6 +3032,8 @@ function ReportsPage({ data }: { data: AppData }) {
       ['Saldo', formatMoney(totalSales - totalExpenses)],
       ['Kg vendidos', formatKg(soldKg)],
       ['Ticket medio', formatMoney(averageTicket)],
+      ['Kg produzidos', formatKg(producedKg)],
+      ['Perdas de producao', formatKg(lossKg)],
       [],
       ['Vendas'],
       ['Data', 'Produto', 'Cliente', 'Peso', 'Valor'],
@@ -2947,6 +3042,10 @@ function ReportsPage({ data }: { data: AppData }) {
       ['Despesas'],
       ['Data', 'Categoria', 'Descricao', 'Valor'],
       ...expenseRows.map((row) => row.map(String)),
+      [],
+      ['Producao'],
+      ['Data','Produto','Consumido','Produzido','Perda','Rendimento','Custo'],
+      ...productionRows.map((row)=>row.map(String)),
       [],
       ['Estoque'],
       ['Produto', 'Categoria', 'Estoque', 'Minimo', 'Status'],
@@ -2981,6 +3080,7 @@ function ReportsPage({ data }: { data: AppData }) {
       ])}
       ${table('Vendas', ['Data', 'Produto', 'Cliente', 'Peso', 'Valor'], salesRows)}
       ${table('Despesas', ['Data', 'Categoria', 'Descricao', 'Valor'], expenseRows)}
+      ${table('Producao', ['Data','Produto','Consumido','Produzido','Perda','Rendimento','Custo'], productionRows)}
       ${table('Estoque', ['Produto', 'Categoria', 'Estoque', 'Minimo', 'Status'], stockRows)}
       </body></html>
     `;
@@ -3047,6 +3147,8 @@ function ReportsPage({ data }: { data: AppData }) {
         <Metric icon={Boxes} label="Estoque baixo" value={`${lowStock.length} produtos`} />
         <Metric icon={ShoppingCart} label="Kg vendidos" value={formatKg(soldKg)} />
         <Metric icon={PackagePlus} label="Kg recebidos" value={formatKg(entryKg)} />
+        <Metric icon={Warehouse} label="Kg produzidos" value={formatKg(producedKg)} />
+        <Metric icon={AlertTriangle} label="Perdas" value={formatKg(lossKg)} />
         <Metric icon={CircleDollarSign} label="Ticket medio" value={formatMoney(averageTicket)} />
         <Metric icon={Warehouse} label="Produtos ativos" value={`${data.products.filter((product) => product.active).length}`} />
       </div>
@@ -3059,6 +3161,7 @@ function ReportsPage({ data }: { data: AppData }) {
         <h2>Despesas no periodo</h2>
         <Table empty="Nenhuma despesa no periodo." headers={['Data', 'Categoria', 'Descricao', 'Valor']} rows={expenseRows} />
       </section>
+      <section className="panel report-print-section"><h2>Producao no periodo</h2><Table empty="Nenhuma producao no periodo." headers={['Data','Produto','Consumido','Produzido','Perda','Rendimento','Custo']} rows={productionRows}/></section>
       <section className="panel report-print-section">
         <h2>Estoque atual</h2>
         <Table empty="Nenhum produto cadastrado." headers={['Produto', 'Categoria', 'Estoque', 'Minimo', 'Status']} rows={stockRows} />

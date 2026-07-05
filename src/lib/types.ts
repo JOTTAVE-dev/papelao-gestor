@@ -7,6 +7,35 @@ export type Product = {
   stock_kg: number;
   min_stock_kg: number;
   active: boolean;
+  product_type: 'materia_prima' | 'produto_acabado' | null;
+  average_cost: number;
+  stock_value: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Production = {
+  id: string;
+  owner_id: string;
+  raw_material_id: string;
+  finished_product_id: string;
+  consumed_kg: number;
+  produced_kg: number;
+  loss_kg: number;
+  yield_percent: number;
+  transferred_cost: number;
+  unit_cost: number;
+  occurred_at: string;
+  notes: string | null;
+  created_at: string;
+};
+
+export type CustomerProductPrice = {
+  id: string;
+  owner_id: string;
+  customer_id: string;
+  product_id: string;
+  price_per_kg: number;
   created_at: string;
   updated_at: string;
 };
@@ -93,7 +122,7 @@ export type Profile = {
 };
 
 export type BackupPayload = {
-  version: 1;
+  version: 1 | 2;
   exportedAt: string;
   products: Product[];
   suppliers: Supplier[];
@@ -101,6 +130,8 @@ export type BackupPayload = {
   entries: StockEntry[];
   sales: Sale[];
   expenses: Expense[];
+  productions?: Production[];
+  customerPrices?: CustomerProductPrice[];
 };
 
 export type AppData = {
@@ -113,12 +144,15 @@ export type AppData = {
   entries: StockEntry[];
   sales: Sale[];
   expenses: Expense[];
+  productions: Production[];
+  customerPrices: CustomerProductPrice[];
 };
 
 export type Page =
   | 'dashboard'
   | 'products'
   | 'entries'
+  | 'production'
   | 'sales'
   | 'expenses'
   | 'suppliers'

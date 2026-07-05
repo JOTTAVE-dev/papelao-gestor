@@ -8,6 +8,8 @@ import type {
   ExpenseCategory,
   Profile,
   Product,
+  Production,
+  CustomerProductPrice,
   Sale,
   StockEntry,
   Supplier,
@@ -20,6 +22,7 @@ type ProductInput = {
   stock_kg?: number;
   min_stock_kg: number;
   active: boolean;
+  product_type: 'materia_prima' | 'produto_acabado';
 };
 
 type ContactInput = {
@@ -85,7 +88,10 @@ async function selectAll<T>(table: string, order = 'created_at') {
 
 export async function loadAppData(): Promise<AppData> {
   const profileResult = await getCurrentProfile();
-  const [companies, profiles, products, suppliers, customers, entries, sales, expenses] = await Promise.all([
+  await supabase.rpc('ensure_default_catalog').then(({ error }) => {
+    if (error && !error.message.includes('Could not find the function') && !error.message.includes('schema cache')) raise(error);
+  });
+  const [companies, profiles, products, suppliers, customers, entries, sales, expenses, productions, customerPrices] = await Promise.all([
     selectAll<Company>('companies', 'name').catch(() => []),
     selectAll<Profile>('profiles', 'created_at').catch(() => []),
     selectAll<Product>('products', 'name'),
@@ -94,9 +100,11 @@ export async function loadAppData(): Promise<AppData> {
     selectAll<StockEntry>('stock_entries', 'occurred_at'),
     selectAll<Sale>('sales', 'occurred_at'),
     selectAll<Expense>('expenses', 'occurred_at'),
+    selectAll<Production>('productions', 'occurred_at').catch(() => []),
+    selectAll<CustomerProductPrice>('customer_product_prices', 'updated_at').catch(() => []),
   ]);
 
-  return { currentProfile: profileResult, companies, profiles, products, suppliers, customers, entries, sales, expenses };
+  return { currentProfile: profileResult, companies, profiles, products, suppliers, customers, entries, sales, expenses, productions, customerPrices };
 }
 
 function normalizeProductName(value: string) {
@@ -108,7 +116,7 @@ export async function saveProduct(input: ProductInput, id?: string) {
   const name = normalizeProductName(input.name);
   if (!name) throw new Error('Informe o nome do produto.');
   if (!input.category.trim()) throw new Error('Informe a categoria do produto.');
-  if (input.price_per_kg <= 0) throw new Error('O preco por kg deve ser maior que zero.');
+  if (input.product_type === 'produto_acabado' && input.price_per_kg <= 0) throw new Error('O preco por kg deve ser maior que zero.');
   if ((input.stock_kg || 0) < 0 || input.min_stock_kg < 0) {
     throw new Error('Estoque e estoque minimo nao podem ser negativos.');
   }
@@ -131,6 +139,7 @@ export async function saveProduct(input: ProductInput, id?: string) {
     price_per_kg: input.price_per_kg,
     min_stock_kg: input.min_stock_kg,
     active: input.active,
+    product_type: input.product_type,
     updated_at: new Date().toISOString(),
   };
 
@@ -277,6 +286,69 @@ export async function createSale(input: {
   if (error) raise(error);
 }
 
+export async function createProduction(input: {
+  raw_material_id: string;
+  finished_product_id: string;
+  consumed_kg: number;
+  produced_kg: number;
+  occurred_at: string;
+  notes: string;
+}) {
+  const { error } = await supabase.rpc('create_production', {
+    p_raw_material_id: input.raw_material_id,
+    p_finished_product_id: input.finished_product_id,
+    p_consumed_kg: input.consumed_kg,
+    p_produced_kg: input.produced_kg,
+    p_occurred_at: input.occurred_at,
+    p_notes: cleanText(input.notes),
+  });
+  if (error) raise(error);
+}
+
+export async function updateProduction(id: string, input: {
+  raw_material_id: string;
+  finished_product_id: string;
+  consumed_kg: number;
+  produced_kg: number;
+  occurred_at: string;
+  notes: string;
+}) {
+  const { error } = await supabase.rpc('admin_update_production', {
+    p_production_id: id,
+    p_raw_material_id: input.raw_material_id,
+    p_finished_product_id: input.finished_product_id,
+    p_consumed_kg: input.consumed_kg,
+    p_produced_kg: input.produced_kg,
+    p_occurred_at: input.occurred_at,
+    p_notes: cleanText(input.notes),
+  });
+  if (error) raise(error);
+}
+
+export async function deleteProduction(id: string) {
+  const { error } = await supabase.rpc('admin_delete_production', { p_production_id: id });
+  if (error) raise(error);
+}
+
+export async function saveCustomerProductPrice(input: { customer_id: string; product_id: string; price_per_kg: number }) {
+  const ownerId = await requireCompanyOwnerId();
+  if (input.price_per_kg <= 0) throw new Error('O preco por kg deve ser maior que zero.');
+  const { error } = await supabase.from('customer_product_prices').upsert({
+    owner_id: ownerId,
+    customer_id: input.customer_id,
+    product_id: input.product_id,
+    price_per_kg: input.price_per_kg,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'owner_id,customer_id,product_id' });
+  if (error) raise(error);
+}
+
+export async function deleteCustomerProductPrice(id: string) {
+  const ownerId = await requireCompanyOwnerId();
+  const { error } = await supabase.from('customer_product_prices').delete().eq('owner_id', ownerId).eq('id', id);
+  if (error) raise(error);
+}
+
 export async function updateSale(
   id: string,
   input: {
@@ -326,7 +398,7 @@ export async function saveExpense(input: {
 export async function exportBackup(): Promise<BackupPayload> {
   const data = await loadAppData();
   return {
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     products: data.products,
     suppliers: data.suppliers,
@@ -334,16 +406,18 @@ export async function exportBackup(): Promise<BackupPayload> {
     entries: data.entries,
     sales: data.sales,
     expenses: data.expenses,
+    productions: data.productions,
+    customerPrices: data.customerPrices,
   };
 }
 
 export async function importBackup(payload: BackupPayload) {
-  if (!payload || payload.version !== 1) {
+  if (!payload || ![1, 2].includes(payload.version)) {
     throw new Error('Arquivo de backup invalido ou versao nao suportada.');
   }
 
   const ownerId = await requireCompanyOwnerId();
-  const tables = ['sales', 'stock_entries', 'expenses', 'products', 'suppliers', 'customers'] as const;
+  const tables = ['customer_product_prices', 'productions', 'sales', 'stock_entries', 'expenses', 'products', 'suppliers', 'customers'] as const;
   for (const table of tables) {
     const { error } = await supabase.from(table).delete().eq('owner_id', ownerId);
     if (error) raise(error);
@@ -357,6 +431,8 @@ export async function importBackup(payload: BackupPayload) {
     ['stock_entries', withOwner(payload.entries)] as const,
     ['sales', withOwner(payload.sales)] as const,
     ['expenses', withOwner(payload.expenses)] as const,
+    ['productions', withOwner(payload.productions || [])] as const,
+    ['customer_product_prices', withOwner(payload.customerPrices || [])] as const,
   ];
 
   for (const [table, rows] of batches) {
