@@ -30,6 +30,16 @@ export type Production = {
   created_at: string;
 };
 
+export type ProductRecipe = {
+  id: string;
+  owner_id: string;
+  product_id: string;
+  raw_material_id: string;
+  consumption_kg: number;
+  created_at: string;
+  updated_at: string;
+};
+
 export type CustomerProductPrice = {
   id: string;
   owner_id: string;
@@ -122,7 +132,7 @@ export type Profile = {
 };
 
 export type BackupPayload = {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   exportedAt: string;
   products: Product[];
   suppliers: Supplier[];
@@ -132,6 +142,7 @@ export type BackupPayload = {
   expenses: Expense[];
   productions?: Production[];
   customerPrices?: CustomerProductPrice[];
+  productRecipes?: ProductRecipe[];
 };
 
 export type AppData = {
@@ -146,11 +157,14 @@ export type AppData = {
   expenses: Expense[];
   productions: Production[];
   customerPrices: CustomerProductPrice[];
+  productRecipes: ProductRecipe[];
 };
 
 export type Page =
   | 'dashboard'
   | 'products'
+  | 'stock'
+  | 'statement'
   | 'entries'
   | 'production'
   | 'sales'

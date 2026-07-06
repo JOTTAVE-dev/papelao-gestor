@@ -770,6 +770,61 @@ nav {
   gap: 8px;
 }
 
+.nav-group {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.nav-group + .nav-group {
+  margin-top: 8px;
+}
+
+.nav-group-label {
+  color: #8a96a3;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1;
+  overflow: hidden;
+  padding: 4px 12px 2px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.sidebar.collapsed .nav-group-label {
+  height: 0;
+  opacity: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
+.nav-group-button .nav-chevron {
+  margin-left: auto;
+  transition: transform 180ms ease;
+}
+
+.nav-group.open .nav-chevron {
+  transform: rotate(180deg);
+}
+
+.nav-submenu {
+  display: grid;
+  gap: 6px;
+  padding-left: 14px;
+}
+
+.nav-sub-button {
+  border-radius: 14px;
+  min-height: 42px;
+  padding-block: 9px;
+}
+
+.sidebar.collapsed .nav-submenu,
+.sidebar.collapsed .nav-chevron {
+  display: none;
+}
+
 .nav-button,
 .exit {
   align-items: center;
@@ -1253,6 +1308,19 @@ tr:hover td {
 
 .span-all {
   grid-column: 1 / -1;
+}
+
+.inline-select-action {
+  align-items: stretch;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 48px;
+}
+
+.inline-add-button {
+  min-height: 52px;
+  padding: 0;
+  width: 48px;
 }
 
 .checkbox-line {

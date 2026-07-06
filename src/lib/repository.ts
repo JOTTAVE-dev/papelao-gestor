@@ -8,6 +8,7 @@ import type {
   ExpenseCategory,
   Profile,
   Product,
+  ProductRecipe,
   Production,
   CustomerProductPrice,
   Sale,
@@ -23,6 +24,8 @@ type ProductInput = {
   min_stock_kg: number;
   active: boolean;
   product_type: 'materia_prima' | 'produto_acabado';
+  recipe_raw_material_id?: string;
+  recipe_consumption_kg?: number;
 };
 
 type ContactInput = {
@@ -45,6 +48,18 @@ function raise(error: unknown): never {
     }
     if (message.includes('Could not find the table') && message.includes('profiles')) {
       throw new Error('A tabela de perfis do Supabase ainda nao foi criada. Execute o SQL consolidado do projeto.');
+    }
+    if (message.includes("Could not find the 'product_type' column") || (message.includes('product_type') && message.includes('schema cache'))) {
+      throw new Error('O banco ainda nao tem a coluna product_type em products. Execute o arquivo supabase/production-and-pricing.sql no SQL Editor do Supabase e tente novamente.');
+    }
+    if (message.includes('product_recipes')) {
+      throw new Error('O banco ainda nao tem a tabela de ficha tecnica. Execute o arquivo supabase/production-and-pricing.sql atualizado no SQL Editor do Supabase.');
+    }
+    if (message.includes('row-level security policy')) {
+      throw new Error('Permissao recusada pelo Supabase. Verifique se seu usuario tem uma empresa ativa/perfil valido e tente recarregar o app.');
+    }
+    if (message.includes('Entrada nao encontrada')) {
+      throw new Error('Entrada nao encontrada pelo banco. Atualize a funcao admin_update_stock_entry no Supabase usando o SQL mais recente do projeto.');
     }
     if (message.includes('Could not find the function')) {
       throw new Error('Uma funcao do Supabase ainda nao foi criada. Execute o SQL consolidado do projeto.');
@@ -77,6 +92,7 @@ export async function getCurrentProfile() {
 async function requireCompanyOwnerId() {
   const userId = await requireUserId();
   const profile = await getCurrentProfile();
+  if (profile?.role === 'super_admin' && profile.support_company_owner_id) return profile.support_company_owner_id;
   return profile?.company_owner_id || userId;
 }
 
@@ -88,10 +104,7 @@ async function selectAll<T>(table: string, order = 'created_at') {
 
 export async function loadAppData(): Promise<AppData> {
   const profileResult = await getCurrentProfile();
-  await supabase.rpc('ensure_default_catalog').then(({ error }) => {
-    if (error && !error.message.includes('Could not find the function') && !error.message.includes('schema cache')) raise(error);
-  });
-  const [companies, profiles, products, suppliers, customers, entries, sales, expenses, productions, customerPrices] = await Promise.all([
+  const [companies, profiles, products, suppliers, customers, entries, sales, expenses, productions, customerPrices, productRecipes] = await Promise.all([
     selectAll<Company>('companies', 'name').catch(() => []),
     selectAll<Profile>('profiles', 'created_at').catch(() => []),
     selectAll<Product>('products', 'name'),
@@ -102,9 +115,10 @@ export async function loadAppData(): Promise<AppData> {
     selectAll<Expense>('expenses', 'occurred_at'),
     selectAll<Production>('productions', 'occurred_at').catch(() => []),
     selectAll<CustomerProductPrice>('customer_product_prices', 'updated_at').catch(() => []),
+    selectAll<ProductRecipe>('product_recipes', 'updated_at').catch(() => []),
   ]);
 
-  return { currentProfile: profileResult, companies, profiles, products, suppliers, customers, entries, sales, expenses, productions, customerPrices };
+  return { currentProfile: profileResult, companies, profiles, products, suppliers, customers, entries, sales, expenses, productions, customerPrices, productRecipes };
 }
 
 function normalizeProductName(value: string) {
@@ -116,7 +130,6 @@ export async function saveProduct(input: ProductInput, id?: string) {
   const name = normalizeProductName(input.name);
   if (!name) throw new Error('Informe o nome do produto.');
   if (!input.category.trim()) throw new Error('Informe a categoria do produto.');
-  if (input.product_type === 'produto_acabado' && input.price_per_kg <= 0) throw new Error('O preco por kg deve ser maior que zero.');
   if ((input.stock_kg || 0) < 0 || input.min_stock_kg < 0) {
     throw new Error('Estoque e estoque minimo nao podem ser negativos.');
   }
@@ -144,10 +157,26 @@ export async function saveProduct(input: ProductInput, id?: string) {
   };
 
   const query = id
-    ? supabase.from('products').update(payload).eq('id', id)
-    : supabase.from('products').insert({ ...payload, stock_kg: input.stock_kg || 0 });
-  const { error } = await query;
+    ? supabase.from('products').update(payload).eq('id', id).select('id').single()
+    : supabase.from('products').insert({ ...payload, stock_kg: input.stock_kg || 0 }).select('id').single();
+  const { data: savedProduct, error } = await query;
   if (error) raise(error);
+  const productId = id || savedProduct?.id;
+  if (!productId) throw new Error('Produto salvo, mas nao foi possivel identificar o registro.');
+
+  if (input.product_type === 'produto_acabado' && input.recipe_raw_material_id && (input.recipe_consumption_kg || 0) > 0) {
+    const { error: recipeError } = await supabase.from('product_recipes').upsert({
+      owner_id: ownerId,
+      product_id: productId,
+      raw_material_id: input.recipe_raw_material_id,
+      consumption_kg: input.recipe_consumption_kg,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'owner_id,product_id' });
+    if (recipeError) raise(recipeError);
+  } else {
+    const { error: recipeDeleteError } = await supabase.from('product_recipes').delete().eq('owner_id', ownerId).eq('product_id', productId);
+    if (recipeDeleteError) raise(recipeDeleteError);
+  }
 }
 
 export async function saveSupplier(input: ContactInput, id?: string) {
@@ -398,7 +427,7 @@ export async function saveExpense(input: {
 export async function exportBackup(): Promise<BackupPayload> {
   const data = await loadAppData();
   return {
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     products: data.products,
     suppliers: data.suppliers,
@@ -408,16 +437,17 @@ export async function exportBackup(): Promise<BackupPayload> {
     expenses: data.expenses,
     productions: data.productions,
     customerPrices: data.customerPrices,
+    productRecipes: data.productRecipes,
   };
 }
 
 export async function importBackup(payload: BackupPayload) {
-  if (!payload || ![1, 2].includes(payload.version)) {
+  if (!payload || ![1, 2, 3].includes(payload.version)) {
     throw new Error('Arquivo de backup invalido ou versao nao suportada.');
   }
 
   const ownerId = await requireCompanyOwnerId();
-  const tables = ['customer_product_prices', 'productions', 'sales', 'stock_entries', 'expenses', 'products', 'suppliers', 'customers'] as const;
+  const tables = ['product_recipes', 'customer_product_prices', 'productions', 'sales', 'stock_entries', 'expenses', 'products', 'suppliers', 'customers'] as const;
   for (const table of tables) {
     const { error } = await supabase.from(table).delete().eq('owner_id', ownerId);
     if (error) raise(error);
@@ -433,6 +463,7 @@ export async function importBackup(payload: BackupPayload) {
     ['expenses', withOwner(payload.expenses)] as const,
     ['productions', withOwner(payload.productions || [])] as const,
     ['customer_product_prices', withOwner(payload.customerPrices || [])] as const,
+    ['product_recipes', withOwner(payload.productRecipes || [])] as const,
   ];
 
   for (const [table, rows] of batches) {

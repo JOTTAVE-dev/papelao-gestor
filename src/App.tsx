@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import {
@@ -8,6 +8,7 @@ import {
   Bell,
   Boxes,
   Check,
+  ChevronDown,
   CircleDollarSign,
   ShieldCheck,
   Download,
@@ -49,7 +50,6 @@ import {
   deleteSupplier,
   deleteStockEntry,
   deleteProduction,
-  deleteCustomerProductPrice,
   exportBackup,
   importBackup,
   loadAppData,
@@ -58,7 +58,6 @@ import {
   saveExpense,
   saveProduct,
   saveSupplier,
-  saveCustomerProductPrice,
   setSupportCompany,
   updateCompanyLimit,
   updateSale,
@@ -90,6 +89,7 @@ const emptyData: AppData = {
   expenses: [],
   productions: [],
   customerPrices: [],
+  productRecipes: [],
   currentProfile: null,
   profiles: [],
 };
@@ -144,22 +144,37 @@ declare global {
 
 const navItems = [
   { page: 'dashboard' as Page, label: 'Dashboard', icon: LayoutDashboard },
-  { page: 'products' as Page, label: 'Produtos e Estoque', icon: Boxes },
+  { page: 'products' as Page, label: 'Produtos', icon: Boxes },
+  { page: 'customers' as Page, label: 'Clientes', icon: Users },
+  { page: 'suppliers' as Page, label: 'Fornecedores', icon: Truck },
+  { page: 'stock' as Page, label: 'Estoque', icon: Warehouse },
+  { page: 'statement' as Page, label: 'Extrato', icon: Archive },
   { page: 'entries' as Page, label: 'Entradas', icon: PackagePlus },
   { page: 'production' as Page, label: 'Producao', icon: Warehouse },
   { page: 'sales' as Page, label: 'Vendas', icon: ShoppingCart },
-  { page: 'voice' as Page, label: 'Lançar por Áudio', icon: Mic },
+  { page: 'voice' as Page, label: 'Lancar por audio', icon: Mic },
   { page: 'expenses' as Page, label: 'Despesas', icon: ReceiptText },
   { page: 'reports' as Page, label: 'Relatorios', icon: ReceiptText },
-  { page: 'suppliers' as Page, label: 'Fornecedores', icon: Truck },
-  { page: 'customers' as Page, label: 'Clientes', icon: Users },
   { page: 'admin' as Page, label: 'Admin', icon: ShieldCheck },
   { page: 'backup' as Page, label: 'Backup', icon: Settings },
+];
+
+const navGroups: Array<{ id: string; label: string; icon: typeof LayoutDashboard; pages: Page[]; collapsible?: boolean }> = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, pages: ['dashboard'] },
+  { id: 'registers', label: 'Cadastros', icon: Boxes, pages: ['products', 'customers', 'suppliers'], collapsible: true },
+  { id: 'stock', label: 'Estoque', icon: Warehouse, pages: ['stock', 'statement', 'entries'], collapsible: true },
+  { id: 'finance', label: 'Financeiro', icon: CircleDollarSign, pages: ['sales', 'expenses', 'reports'], collapsible: true },
+  { id: 'production', label: 'Producao', icon: Warehouse, pages: ['production'] },
+  { id: 'voice', label: 'Lancar por audio', icon: Mic, pages: ['voice'] },
+  { id: 'admin', label: 'Admin', icon: ShieldCheck, pages: ['admin'] },
+  { id: 'backup', label: 'Backup', icon: Settings, pages: ['backup'] },
 ];
 
 const pageRoutes: Record<Page, string> = {
   dashboard: '/',
   products: '/produtos',
+  stock: '/estoque',
+  statement: '/extrato',
   entries: '/entradas',
   production: '/producao',
   sales: '/vendas',
@@ -201,8 +216,9 @@ export default function App() {
   const [error, setError] = useState('');
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [openNavGroups, setOpenNavGroups] = useState<Record<string, boolean>>({});
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState<'config' | 'products' | 'create' | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState<'registers' | 'stock' | 'finance' | 'more' | null>(null);
   const [toasts, setToasts] = useState<AppToast[]>([]);
 
   useEffect(() => {
@@ -313,6 +329,7 @@ export default function App() {
         }
       : data;
   const visibleNavItems = navItems.filter((item) => item.page !== 'admin' || canOpenAdmin);
+  const visibleNavItemByPage = new Map(visibleNavItems.map((item) => [item.page, item]));
 
   function navigateTo(nextPage: Page, options?: { replace?: boolean }) {
     const targetPage = nextPage === 'admin' && data.currentProfile && !canOpenAdmin ? 'dashboard' : nextPage;
@@ -415,19 +432,64 @@ export default function App() {
         </div>
 
         <nav>
-          {visibleNavItems.map((item) => {
-            const Icon = item.icon;
+          {navGroups.map((group, groupIndex) => {
+            const items = group.pages
+              .map((groupPage) => visibleNavItemByPage.get(groupPage))
+              .filter((item): item is (typeof navItems)[number] => Boolean(item));
+            if (!items.length) return null;
+            const isGroupActive = group.pages.includes(page);
+            const isGroupOpen = group.collapsible && (openNavGroups[group.id] || isGroupActive);
+            const GroupIcon = group.icon;
+            if (!group.collapsible) {
+              const item = items[0];
+              const Icon = item.icon;
+              return (
+                <div className="nav-group" key={group.id || groupIndex}>
+                  <button
+                    className={page === item.page ? 'nav-button active' : 'nav-button'}
+                    onClick={() => navigateTo(item.page)}
+                    type="button"
+                    title={sidebarExpanded ? undefined : item.label}
+                  >
+                    <Icon size={18} />
+                    <span className="nav-label">{item.label}</span>
+                  </button>
+                </div>
+              );
+            }
             return (
-              <button
-                key={item.page}
-                className={page === item.page ? 'nav-button active' : 'nav-button'}
-                onClick={() => navigateTo(item.page)}
-                type="button"
-                title={sidebarExpanded ? undefined : item.label}
-              >
-                <Icon size={18} />
-                <span className="nav-label">{item.label}</span>
-              </button>
+              <div className={isGroupOpen ? 'nav-group open' : 'nav-group'} key={group.id || groupIndex}>
+                <button
+                  className={isGroupActive ? 'nav-button nav-group-button active' : 'nav-button nav-group-button'}
+                  onClick={() => setOpenNavGroups((current) => ({ ...current, [group.id]: !current[group.id] }))}
+                  type="button"
+                  title={sidebarExpanded ? undefined : group.label}
+                  aria-expanded={Boolean(isGroupOpen)}
+                >
+                  <GroupIcon size={18} />
+                  <span className="nav-label">{group.label}</span>
+                  <ChevronDown className="nav-chevron" size={16} />
+                </button>
+                {isGroupOpen && (
+                  <div className="nav-submenu">
+                    {items.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <button
+                          key={item.page}
+                          className={page === item.page ? 'nav-button nav-sub-button active' : 'nav-button nav-sub-button'}
+                          onClick={() => navigateTo(item.page)}
+                          type="button"
+                          title={sidebarExpanded ? undefined : item.label}
+                        >
+                          <Icon size={17} />
+                          <span className="nav-label">{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </nav>
@@ -504,13 +566,15 @@ export default function App() {
           <>
             {page === 'dashboard' && <Dashboard data={scopedData} />}
             {page === 'products' && <ProductsPage data={scopedData} runAction={runAction} isAdmin={isSuperAdmin} />}
-            {page === 'entries' && <EntriesPage data={scopedData} runAction={runAction} isAdmin={isSuperAdmin} />}
+            {page === 'stock' && <StockPage data={scopedData} />}
+            {page === 'statement' && <StatementPage data={scopedData} />}
+            {page === 'entries' && <EntriesPage data={scopedData} runAction={runAction} isAdmin={canManageRecords} />}
             {page === 'production' && <ProductionPage data={scopedData} runAction={runAction} isAdmin={canManageRecords} />}
             {page === 'sales' && <SalesPage data={scopedData} runAction={runAction} isAdmin={isSuperAdmin} />}
             {page === 'voice' && <VoicePage data={scopedData} runAction={runAction} />}
             {page === 'expenses' && <ExpensesPage data={scopedData} runAction={runAction} canManage={canManageRecords} />}
             {page === 'suppliers' && <ContactsPage type="suppliers" data={scopedData} runAction={runAction} canManage={canManageRecords} />}
-            {page === 'customers' && <><ContactsPage type="customers" data={scopedData} runAction={runAction} canManage={canManageRecords} /><CustomerPricesPanel data={scopedData} runAction={runAction} /></>}
+            {page === 'customers' && <ContactsPage type="customers" data={scopedData} runAction={runAction} canManage={canManageRecords} />}
             {page === 'admin' && canOpenAdmin && <AdminPage data={data} runAction={runAction} />}
             {page === 'reports' && <ReportsPage data={scopedData} />}
           </>
@@ -518,27 +582,41 @@ export default function App() {
         {page === 'backup' && <BackupPage runAction={runAction} />}
       </main>
       <nav className="mobile-bottom-nav" aria-label="Navegação principal mobile">
-        <div className={mobileMenuOpen === 'config' ? 'bottom-menu-wrap open' : 'bottom-menu-wrap'}>
+        <div className={mobileMenuOpen === 'more' ? 'bottom-menu-wrap open' : 'bottom-menu-wrap'}>
           <div className="bottom-create-popover bottom-side-popover">
+            <button type="button" onClick={() => navigateTo('production')}>
+              <Warehouse size={17} />
+              Producao
+            </button>
+            <button type="button" onClick={() => navigateTo('voice')}>
+              <Mic size={17} />
+              Lancar por audio
+            </button>
+            {canOpenAdmin && (
+              <button type="button" onClick={() => navigateTo('admin')}>
+                <ShieldCheck size={17} />
+                Admin
+              </button>
+            )}
             <button type="button" onClick={() => navigateTo('backup')}>
               <ShieldCheck size={17} />
-              Segurança e Backup
+              Backup
             </button>
           </div>
           <button
-            className={page === 'backup' || mobileMenuOpen === 'config' ? 'bottom-nav-item active' : 'bottom-nav-item'}
-            onClick={() => setMobileMenuOpen((current) => (current === 'config' ? null : 'config'))}
+            className={['production', 'voice', 'admin', 'backup'].includes(page) || mobileMenuOpen === 'more' ? 'bottom-nav-item active' : 'bottom-nav-item'}
+            onClick={() => setMobileMenuOpen((current) => (current === 'more' ? null : 'more'))}
             type="button"
           >
             <Settings size={19} />
-            <span>Config</span>
+            <span>Mais</span>
           </button>
         </div>
-        <div className={mobileMenuOpen === 'products' ? 'bottom-menu-wrap open' : 'bottom-menu-wrap'}>
+        <div className={mobileMenuOpen === 'registers' ? 'bottom-menu-wrap open' : 'bottom-menu-wrap'}>
           <div className="bottom-create-popover bottom-side-popover">
             <button type="button" onClick={() => navigateTo('products')}>
               <Boxes size={17} />
-              Produtos/Estoque
+              Produtos
             </button>
             <button type="button" onClick={() => navigateTo('customers')}>
               <Users size={17} />
@@ -550,51 +628,64 @@ export default function App() {
             </button>
           </div>
           <button
-            className={['products', 'customers', 'suppliers'].includes(page) || mobileMenuOpen === 'products' ? 'bottom-nav-item active' : 'bottom-nav-item'}
-            onClick={() => setMobileMenuOpen((current) => (current === 'products' ? null : 'products'))}
+            className={['products', 'customers', 'suppliers'].includes(page) || mobileMenuOpen === 'registers' ? 'bottom-nav-item active' : 'bottom-nav-item'}
+            onClick={() => setMobileMenuOpen((current) => (current === 'registers' ? null : 'registers'))}
             type="button"
           >
             <Boxes size={19} />
-            <span>Produtos</span>
+            <span>Cadastros</span>
           </button>
         </div>
-        <div className={mobileMenuOpen === 'create' ? 'bottom-fab-wrap open' : 'bottom-fab-wrap'}>
+        <div className={mobileMenuOpen === 'stock' ? 'bottom-menu-wrap open' : 'bottom-menu-wrap'}>
           <div className="bottom-create-popover">
+            <button type="button" onClick={() => navigateTo('stock')}>
+              <Warehouse size={17} />
+              Estoque
+            </button>
+            <button type="button" onClick={() => navigateTo('statement')}>
+              <Archive size={17} />
+              Extrato
+            </button>
             <button type="button" onClick={() => navigateTo('entries')}>
               <PackagePlus size={17} />
               Entradas
             </button>
+          </div>
+          <button
+            className={['stock', 'statement', 'entries'].includes(page) || mobileMenuOpen === 'stock' ? 'bottom-nav-item active' : 'bottom-nav-item'}
+            onClick={() => setMobileMenuOpen((current) => (current === 'stock' ? null : 'stock'))}
+            type="button"
+            aria-expanded={mobileMenuOpen === 'stock'}
+            aria-label="Abrir menu de estoque"
+          >
+            <Warehouse size={19} />
+            <span>Estoque</span>
+          </button>
+        </div>
+        <div className={mobileMenuOpen === 'finance' ? 'bottom-menu-wrap open' : 'bottom-menu-wrap'}>
+          <div className="bottom-create-popover bottom-side-popover">
             <button type="button" onClick={() => navigateTo('sales')}>
               <ShoppingCart size={17} />
               Vendas
-            </button>
-            <button type="button" onClick={() => navigateTo('production')}>
-              <Warehouse size={17} />
-              Producao
             </button>
             <button type="button" onClick={() => navigateTo('expenses')}>
               <CircleDollarSign size={17} />
               Despesas
             </button>
-            <button type="button" onClick={() => navigateTo('voice')}>
-              <Mic size={17} />
-              Lançar por Áudio
+            <button type="button" onClick={() => navigateTo('reports')}>
+              <ReceiptText size={17} />
+              Relatorios
             </button>
           </div>
           <button
-            className={['entries', 'production', 'sales', 'expenses', 'voice'].includes(page) || mobileMenuOpen === 'create' ? 'bottom-fab active' : 'bottom-fab'}
-            onClick={() => setMobileMenuOpen((current) => (current === 'create' ? null : 'create'))}
+            className={['sales', 'expenses', 'reports'].includes(page) || mobileMenuOpen === 'finance' ? 'bottom-nav-item active' : 'bottom-nav-item'}
+            onClick={() => setMobileMenuOpen((current) => (current === 'finance' ? null : 'finance'))}
             type="button"
-            aria-expanded={mobileMenuOpen === 'create'}
-            aria-label="Abrir ações de lançamento"
           >
-            <Plus size={28} />
+            <CircleDollarSign size={19} />
+            <span>Financeiro</span>
           </button>
         </div>
-        <button className={page === 'reports' ? 'bottom-nav-item active' : 'bottom-nav-item'} onClick={() => navigateTo('reports')} type="button">
-          <ReceiptText size={19} />
-          <span>Relatórios</span>
-        </button>
         <button className={page === 'dashboard' ? 'bottom-nav-item active' : 'bottom-nav-item'} onClick={() => navigateTo('dashboard')} type="button">
           <LayoutDashboard size={19} />
           <span>Dashboard</span>
@@ -1119,7 +1210,7 @@ function VoicePage({ data, runAction }: PageProps) {
         await saveProduct({
           name: parsed.productName,
           category: 'Papelão',
-          price_per_kg: parsed.unitPrice || parsed.totalValue,
+          price_per_kg: 0,
           min_stock_kg: 0,
           active: true,
           product_type: 'produto_acabado',
@@ -1360,13 +1451,12 @@ function ProductsPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boole
         <PanelSearch value={query} onChange={setQuery} placeholder="Buscar produto por nome ou categoria" />
         <Table
           empty="Nenhum produto cadastrado."
-          headers={isAdmin ? ['Produto', 'Tipo', 'Preco/kg', 'Custo medio', 'Estoque', 'Status', 'Ações'] : ['Produto', 'Tipo', 'Preco/kg', 'Custo medio', 'Estoque', 'Status', '']}
+          headers={isAdmin ? ['Produto', 'Tipo', 'Categoria', 'Preco/kg', 'Status', 'Ações'] : ['Produto', 'Tipo', 'Categoria', 'Preco/kg', 'Status', '']}
           rows={filtered.map((product) => [
             <strong>{product.name}</strong>,
             product.product_type === 'materia_prima' ? 'Materia-prima' : product.product_type === 'produto_acabado' ? 'Produto acabado' : 'Classificar',
-            formatMoney(product.price_per_kg),
-            formatMoney(product.average_cost || 0),
-            formatKg(product.stock_kg),
+            product.category,
+            product.product_type === 'materia_prima' ? '-' : formatMoney(product.price_per_kg),
             product.active ? 'Ativo' : 'Inativo',
             <div className="row-actions">
               <button className="small-button" onClick={() => setViewing(product)} type="button">
@@ -1394,6 +1484,7 @@ function ProductsPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boole
           <ProductForm
             product={editing}
             products={data.products}
+            productRecipes={data.productRecipes}
             onCancel={closeProductModal}
             onSubmit={(input) =>
               runAction('Produto salvo.', async () => {
@@ -1418,19 +1509,13 @@ function ProductsPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boole
             </div>
             <div>
               <span>Preco por kg</span>
-              <strong>{formatMoney(viewing.price_per_kg)}</strong>
+              <strong>{viewing.product_type === 'materia_prima' ? '-' : formatMoney(viewing.price_per_kg)}</strong>
             </div>
             <div><span>Tipo</span><strong>{viewing.product_type === 'materia_prima' ? 'Materia-prima' : viewing.product_type === 'produto_acabado' ? 'Produto acabado' : 'Nao classificado'}</strong></div>
+            {viewing.product_type === 'produto_acabado' && (
+              <ProductRecipeDetails product={viewing} data={data} />
+            )}
             <div><span>Custo medio</span><strong>{formatMoney(viewing.average_cost || 0)}</strong></div>
-            <div><span>Valor em estoque</span><strong>{formatMoney(viewing.stock_value || 0)}</strong></div>
-            <div>
-              <span>Estoque atual</span>
-              <strong>{formatKg(viewing.stock_kg)}</strong>
-            </div>
-            <div>
-              <span>Estoque minimo</span>
-              <strong>{formatKg(viewing.min_stock_kg)}</strong>
-            </div>
             <div>
               <span>Status</span>
               <strong>{viewing.active ? 'Ativo' : 'Inativo'}</strong>
@@ -1465,10 +1550,6 @@ function ProductsPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boole
               <span>Produto</span>
               <strong>{deleting.name}</strong>
             </div>
-            <div>
-              <span>Estoque</span>
-              <strong>{formatKg(deleting.stock_kg)}</strong>
-            </div>
           </div>
           <div className="form-actions">
             <button className="secondary-button" onClick={() => setDeleting(null)} type="button">
@@ -1493,14 +1574,148 @@ function ProductsPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boole
   );
 }
 
+function StockPage({ data }: { data: AppData }) {
+  const [query, setQuery] = useState('');
+  const filtered = filterBy(data.products, query, (product) => `${product.name} ${product.category}`);
+
+  return (
+    <div className="admin-layout">
+      <section className="panel">
+        <div className="panel-title-row">
+          <div>
+            <h2>Estoque atual</h2>
+            <span className="muted-text">{filtered.length} produto(s) encontrado(s)</span>
+          </div>
+        </div>
+        <PanelSearch value={query} onChange={setQuery} placeholder="Buscar produto por nome ou categoria" />
+        <Table
+          empty="Nenhum produto cadastrado."
+          headers={['Produto', 'Tipo', 'Categoria', 'Estoque atual', 'Estoque minimo', 'Custo medio', 'Valor em estoque', 'Status']}
+          rows={filtered.map((product) => [
+            <strong>{product.name}</strong>,
+            product.product_type === 'materia_prima' ? 'Materia-prima' : product.product_type === 'produto_acabado' ? 'Produto acabado' : 'Classificar',
+            product.category,
+            formatKg(product.stock_kg),
+            formatKg(product.min_stock_kg),
+            formatMoney(product.average_cost || 0),
+            formatMoney(product.stock_value || 0),
+            product.stock_kg <= product.min_stock_kg ? 'Baixo' : 'OK',
+          ])}
+        />
+      </section>
+    </div>
+  );
+}
+
+function StatementPage({ data }: { data: AppData }) {
+  const [query, setQuery] = useState('');
+  const movements = [
+    ...data.entries.map((entry) => ({
+      id: `entry-${entry.id}`,
+      occurred_at: entry.occurred_at,
+      product: productName(data, entry.product_id),
+      type: 'Entrada',
+      origin: supplierName(data, entry.supplier_id),
+      quantity: entry.weight_kg,
+      direction: 'in' as const,
+      value: entry.total_cost,
+      notes: entry.notes || '',
+    })),
+    ...data.sales.map((sale) => ({
+      id: `sale-${sale.id}`,
+      occurred_at: sale.occurred_at,
+      product: productName(data, sale.product_id),
+      type: 'Saida por venda',
+      origin: customerName(data, sale.customer_id),
+      quantity: sale.weight_kg,
+      direction: 'out' as const,
+      value: sale.total_price,
+      notes: sale.notes || '',
+    })),
+    ...data.productions.flatMap((production) => [
+      {
+        id: `production-raw-${production.id}`,
+        occurred_at: production.occurred_at,
+        product: productName(data, production.raw_material_id),
+        type: 'Saida para producao',
+        origin: productName(data, production.finished_product_id),
+        quantity: production.consumed_kg,
+        direction: 'out' as const,
+        value: production.transferred_cost,
+        notes: production.notes || '',
+      },
+      {
+        id: `production-finished-${production.id}`,
+        occurred_at: production.occurred_at,
+        product: productName(data, production.finished_product_id),
+        type: 'Entrada de producao',
+        origin: productName(data, production.raw_material_id),
+        quantity: production.produced_kg,
+        direction: 'in' as const,
+        value: production.transferred_cost,
+        notes: production.notes || '',
+      },
+    ]),
+  ].sort((a, b) => new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime());
+  const filtered = filterBy(movements, query, (movement) => `${movement.product} ${movement.type} ${movement.origin} ${movement.notes}`);
+
+  return (
+    <div className="admin-layout">
+      <section className="panel">
+        <PanelSearch value={query} onChange={setQuery} placeholder="Buscar por produto, tipo, fornecedor, cliente ou observacao" />
+        <Table
+          empty="Nenhum movimento registrado."
+          headers={['Data', 'Produto', 'Movimento', 'Origem/Destino', 'Entrada', 'Saida', 'Valor', 'Observacao']}
+          rows={filtered.map((movement) => [
+            formatDateTime(movement.occurred_at),
+            <strong>{movement.product}</strong>,
+            movement.type,
+            movement.origin,
+            movement.direction === 'in' ? formatKg(movement.quantity) : '-',
+            movement.direction === 'out' ? formatKg(movement.quantity) : '-',
+            formatMoney(movement.value),
+            movement.notes || '-',
+          ])}
+        />
+      </section>
+    </div>
+  );
+}
+
+function ProductRecipeDetails({ product, data }: { product: Product; data: AppData }) {
+  const recipe = data.productRecipes.find((item) => item.product_id === product.id);
+  if (!recipe) {
+    return (
+      <div>
+        <span>Ficha tecnica</span>
+        <strong>Nao cadastrada</strong>
+      </div>
+    );
+  }
+  return (
+    <>
+      <div>
+        <span>Materia-prima</span>
+        <strong>{productName(data, recipe.raw_material_id)}</strong>
+      </div>
+      <div>
+        <span>Consumo por kg</span>
+        <strong>{formatKg(recipe.consumption_kg)}</strong>
+      </div>
+    </>
+  );
+}
+
 function ProductForm({
   product,
   products,
+  productRecipes,
   onSubmit,
   onCancel,
 }: {
   product: Product | null;
   products: Product[];
+  productRecipes: AppData['productRecipes'];
   onSubmit: (input: {
     name: string;
     category: string;
@@ -1509,31 +1724,31 @@ function ProductForm({
     min_stock_kg: number;
     active: boolean;
     product_type: 'materia_prima' | 'produto_acabado';
+    recipe_raw_material_id?: string;
+    recipe_consumption_kg?: number;
   }) => void;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(product?.name || '');
-  const [category, setCategory] = useState(product?.category || '');
-  const [price, setPrice] = useState(product ? String(product.price_per_kg) : '');
-  const [stock, setStock] = useState(product ? String(product.stock_kg) : '');
-  const [minimum, setMinimum] = useState(product ? String(product.min_stock_kg) : '');
   const [active, setActive] = useState(product?.active ?? true);
   const [productType, setProductType] = useState<'materia_prima' | 'produto_acabado'>(product?.product_type || 'produto_acabado');
+  const currentRecipe = product ? productRecipes.find((recipe) => recipe.product_id === product.id) : null;
+  const rawMaterialOptions = products.filter((item) => item.active && item.product_type === 'materia_prima' && item.id !== product?.id);
+  const [recipeRawMaterialId, setRecipeRawMaterialId] = useState(currentRecipe?.raw_material_id || '');
+  const [recipeConsumption, setRecipeConsumption] = useState(currentRecipe ? String(currentRecipe.consumption_kg) : '');
   const productNameOptions = Array.from(new Set(products.map((item) => item.name).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-  const categoryOptions = Array.from(new Set(products.map((item) => item.category).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  const categoryLabel = productType === 'materia_prima' ? 'Materia-prima' : 'Produto acabado';
   const duplicate = products.some(
     (item) => item.id !== product?.id && normalizeName(item.name) === normalizeName(name),
   );
 
   useEffect(() => {
     setName(product?.name || '');
-    setCategory(product?.category || '');
-    setPrice(product ? String(product.price_per_kg) : '');
-    setStock(product ? String(product.stock_kg) : '');
-    setMinimum(product ? String(product.min_stock_kg) : '');
     setActive(product?.active ?? true);
     setProductType(product?.product_type || 'produto_acabado');
-  }, [product]);
+    setRecipeRawMaterialId(currentRecipe?.raw_material_id || '');
+    setRecipeConsumption(currentRecipe ? String(currentRecipe.consumption_kg) : '');
+  }, [product, currentRecipe]);
 
   return (
     <form
@@ -1543,12 +1758,14 @@ function ProductForm({
         if (duplicate) return;
         onSubmit({
           name,
-          category,
-          price_per_kg: Number(price),
-          stock_kg: product ? undefined : Number(stock || 0),
-          min_stock_kg: Number(minimum || 0),
+          category: categoryLabel,
+          price_per_kg: product?.price_per_kg || 0,
+          stock_kg: product ? undefined : 0,
+          min_stock_kg: product?.min_stock_kg || 0,
           active,
           product_type: productType,
+          recipe_raw_material_id: productType === 'produto_acabado' ? recipeRawMaterialId : undefined,
+          recipe_consumption_kg: productType === 'produto_acabado' ? parseDecimalInput(recipeConsumption) : undefined,
         });
       }}
     >
@@ -1562,30 +1779,22 @@ function ProductForm({
         </datalist>
       </label>
       {duplicate && <div className="notice danger span-all">Ja existe um produto cadastrado com esse nome.</div>}
-      <label>
-        Categoria
-        <input list="product-category-options" value={category} onChange={(event) => setCategory(event.target.value)} placeholder="Digite ou pesquise uma categoria" required />
-        <datalist id="product-category-options">
-          {categoryOptions.map((option) => (
-            <option key={option} value={option} />
-          ))}
-        </datalist>
-      </label>
-      <Select label="Tipo" value={productType} onChange={(value) => setProductType(value as 'materia_prima' | 'produto_acabado')} options={[{ value: 'materia_prima', label: 'Materia-prima' }, { value: 'produto_acabado', label: 'Produto acabado' }]} />
-      <label>
-        Preco por kg
-        <input min="0" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="0,00" type="number" required />
-      </label>
-      {!product && (
-        <label>
-          Estoque inicial em kg
-          <input min="0" step="0.01" value={stock} onChange={(event) => setStock(event.target.value)} placeholder="0,00" type="number" />
-        </label>
+      <Select label="Categoria" value={productType} onChange={(value) => setProductType(value as 'materia_prima' | 'produto_acabado')} options={[{ value: 'materia_prima', label: 'Materia-prima' }, { value: 'produto_acabado', label: 'Produto acabado' }]} />
+      {productType === 'materia_prima' && (
+        <div className="notice neutral span-all">
+          O custo da materia-prima e informado em Estoque &gt; Entradas, por fornecedor e por compra.
+        </div>
       )}
-      <label>
-        Estoque minimo em kg
-        <input min="0" step="0.01" value={minimum} onChange={(event) => setMinimum(event.target.value)} placeholder="0,00" type="number" />
-      </label>
+      {productType === 'produto_acabado' && (
+        <>
+          <Select label="Materia-prima da ficha tecnica" value={recipeRawMaterialId} onChange={setRecipeRawMaterialId} options={rawMaterialOptions.map(optionFromName)} />
+          <label>
+            Consumo de materia-prima por kg
+            <input inputMode="decimal" value={recipeConsumption} onChange={(event) => setRecipeConsumption(event.target.value)} placeholder="0,00" type="text" />
+          </label>
+          {!rawMaterialOptions.length && <div className="notice warning span-all">Cadastre uma materia-prima ativa para montar a ficha tecnica.</div>}
+        </>
+      )}
       <label className="checkbox-line">
         <input checked={active} onChange={(event) => setActive(event.target.checked)} type="checkbox" />
         Produto ativo
@@ -1634,11 +1843,12 @@ function EntriesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolea
         <PanelSearch value={query} onChange={setQuery} placeholder="Buscar por produto, fornecedor ou observacao" />
         <Table
           empty="Nenhuma entrada registrada."
-          headers={['Produto', 'Fornecedor', 'Peso', 'Custo total', 'Data', 'Acoes']}
+          headers={['Produto', 'Fornecedor', 'Peso', 'Custo/kg', 'Custo total', 'Data', 'Acoes']}
           rows={filtered.map((entry) => [
             productName(data, entry.product_id),
             supplierName(data, entry.supplier_id),
             formatKg(entry.weight_kg),
+            formatMoney(entry.unit_cost),
             formatMoney(entry.total_cost),
             formatDateTime(entry.occurred_at),
             <div className="row-actions">
@@ -1750,13 +1960,16 @@ function EntryForm({
   }) => void;
   onCancel: () => void;
 }) {
-  const productOptions = entry && !products.some((product) => product.id === entry.product_id)
-    ? [...products, { id: entry.product_id, name: 'Produto atual', active: true } as Product]
-    : products;
-  const supplierOptions = suppliers;
+  const [quickSuppliers, setQuickSuppliers] = useState<Supplier[]>([]);
+  const [quickSupplierOpen, setQuickSupplierOpen] = useState(false);
+  const productOptions = useMemo(() => (
+    entry && !products.some((product) => product.id === entry.product_id)
+      ? [...products, { id: entry.product_id, name: 'Produto atual', active: true } as Product]
+      : products
+  ), [entry, products]);
+  const supplierOptions = useMemo(() => [...suppliers, ...quickSuppliers], [suppliers, quickSuppliers]);
   const [productId, setProductId] = useState(entry?.product_id || '');
   const [supplierId, setSupplierId] = useState(entry?.supplier_id || '');
-  const [productQuery, setProductQuery] = useState(() => productOptions.find((product) => product.id === entry?.product_id)?.name || '');
   const [supplierQuery, setSupplierQuery] = useState(() => supplierOptions.find((supplier) => supplier.id === entry?.supplier_id)?.name || '');
   const [weight, setWeight] = useState(entry ? String(entry.weight_kg) : '');
   const [unitCost, setUnitCost] = useState(entry ? String(entry.unit_cost) : '');
@@ -1765,8 +1978,8 @@ function EntryForm({
   const [notes, setNotes] = useState(entry?.notes || '');
 
   useEffect(() => {
-    const weightValue = Number(weight);
-    const unitCostValue = Number(unitCost);
+    const weightValue = parseDecimalInput(weight);
+    const unitCostValue = parseDecimalInput(unitCost);
     if (weight !== '' && unitCost !== '' && !Number.isNaN(weightValue) && !Number.isNaN(unitCostValue)) {
       setTotalCost(String(roundMoney(weightValue * unitCostValue)));
     }
@@ -1775,16 +1988,16 @@ function EntryForm({
   useEffect(() => {
     setProductId(entry?.product_id || '');
     setSupplierId(entry?.supplier_id || '');
-    setProductQuery(productOptions.find((product) => product.id === entry?.product_id)?.name || '');
     setSupplierQuery(supplierOptions.find((supplier) => supplier.id === entry?.supplier_id)?.name || '');
     setWeight(entry ? String(entry.weight_kg) : '');
     setUnitCost(entry ? String(entry.unit_cost) : '');
     setTotalCost(entry ? String(entry.total_cost) : '');
     setDate(entry ? toInputDateTime(entry.occurred_at) : toInputDateTime());
     setNotes(entry?.notes || '');
-  }, [entry, productOptions, supplierOptions]);
+  }, [entry]);
 
   return (
+    <>
     <form
       className="form-grid"
       onSubmit={(event) => {
@@ -1792,48 +2005,35 @@ function EntryForm({
         onSubmit({
           product_id: productId,
           supplier_id: supplierId,
-          weight_kg: Number(weight),
-          unit_cost: Number(unitCost),
-          total_cost: Number(totalCost),
+          weight_kg: parseDecimalInput(weight),
+          unit_cost: parseDecimalInput(unitCost),
+          total_cost: parseDecimalInput(totalCost),
           occurred_at: fromInputDateTime(date),
           notes,
         });
       }}
     >
-      <label>
-        Produto
-        <input
-          list="entry-product-options"
-          value={productQuery}
-          onChange={(event) => {
-            const value = event.target.value;
-            setProductQuery(value);
-            const match = productOptions.find((product) => normalizeName(product.name) === normalizeName(value));
-            setProductId(match?.id || '');
-          }}
-          placeholder="Digite ou pesquise um produto"
-          required
-        />
-        <datalist id="entry-product-options">
-          {productOptions.map((product) => (
-            <option key={product.id} value={product.name} />
-          ))}
-        </datalist>
-      </label>
+      <Select label="Produto" value={productId} onChange={setProductId} options={productOptions.map(optionFromName)} />
+      {!productOptions.length && <div className="notice warning span-all">Cadastre uma materia-prima ativa antes de registrar entrada.</div>}
       <label>
         Fornecedor
-        <input
-          list="entry-supplier-options"
-          value={supplierQuery}
-          onChange={(event) => {
-            const value = event.target.value;
-            setSupplierQuery(value);
-            const match = supplierOptions.find((supplier) => normalizeName(supplier.name) === normalizeName(value));
-            setSupplierId(match?.id || '');
-          }}
-          placeholder="Digite ou pesquise um fornecedor"
-          required
-        />
+        <div className="inline-select-action">
+          <input
+            list="entry-supplier-options"
+            value={supplierQuery}
+            onChange={(event) => {
+              const value = event.target.value;
+              setSupplierQuery(value);
+              const match = supplierOptions.find((supplier) => normalizeName(supplier.name) === normalizeName(value));
+              setSupplierId(match?.id || '');
+            }}
+            placeholder="Digite ou pesquise um fornecedor"
+            required
+          />
+          <button className="icon-button inline-add-button" onClick={() => setQuickSupplierOpen(true)} title="Cadastrar fornecedor rapido" type="button">
+            <Plus size={18} />
+          </button>
+        </div>
         <datalist id="entry-supplier-options">
           {supplierOptions.map((supplier) => (
             <option key={supplier.id} value={supplier.name} />
@@ -1842,15 +2042,15 @@ function EntryForm({
       </label>
       <label>
         Peso recebido em kg
-        <input min="0.01" step="0.01" value={weight} onChange={(event) => setWeight(event.target.value)} placeholder="0,00" type="number" required />
+        <input inputMode="decimal" value={weight} onChange={(event) => setWeight(event.target.value)} placeholder="0,00" type="text" required />
       </label>
       <label>
         Custo por kg
-        <input min="0" step="0.01" value={unitCost} onChange={(event) => setUnitCost(event.target.value)} placeholder="0,00" type="number" required />
+        <input inputMode="decimal" value={unitCost} onChange={(event) => setUnitCost(event.target.value)} placeholder="0,00" type="text" required />
       </label>
       <label>
         Custo total
-        <input min="0" step="0.01" value={totalCost} onChange={(event) => setTotalCost(event.target.value)} placeholder="0,00" type="number" required />
+        <input inputMode="decimal" value={totalCost} onChange={(event) => setTotalCost(event.target.value)} placeholder="0,00" type="text" required />
       </label>
       <label>
         Data e hora
@@ -1870,6 +2070,21 @@ function EntryForm({
         </button>
       </div>
     </form>
+    {quickSupplierOpen && (
+      <Modal title="Fornecedor rapido" onClose={() => setQuickSupplierOpen(false)}>
+        <QuickSupplierForm
+          onCancel={() => setQuickSupplierOpen(false)}
+          onSubmit={async (name) => {
+            const supplier = await createSupplier({ name, phone: '', document: '', notes: '' });
+            setQuickSuppliers((current) => [...current, supplier]);
+            setSupplierId(supplier.id);
+            setSupplierQuery(supplier.name);
+            setQuickSupplierOpen(false);
+          }}
+        />
+      </Modal>
+    )}
+    </>
   );
 }
 
@@ -1924,43 +2139,34 @@ function ProductionPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boo
         isAdmin ? <div className="row-actions"><button className="small-button" onClick={() => setEditing(production)} type="button">Editar</button><button className="small-button danger-button" onClick={() => confirmAction('Excluir esta producao e reverter os estoques?', () => runAction('Producao excluida.', () => deleteProduction(production.id)))} type="button">Apagar</button></div> : ''
       ])}/>
     </section>
-    {(creating || editing) && <Modal title={editing ? 'Editar producao' : 'Nova producao'} onClose={close}><ProductionForm production={editing} rawMaterials={rawMaterials} finishedProducts={finishedProducts} onCancel={close} onSubmit={(input) => runAction(editing ? 'Producao atualizada.' : 'Producao registrada.', async () => { if (editing) await updateProduction(editing.id,input); else await createProduction(input); close(); })}/></Modal>}
+    {(creating || editing) && <Modal title={editing ? 'Editar producao' : 'Nova producao'} onClose={close}><ProductionForm production={editing} rawMaterials={rawMaterials} finishedProducts={finishedProducts} productRecipes={data.productRecipes} onCancel={close} onSubmit={(input) => runAction(editing ? 'Producao atualizada.' : 'Producao registrada.', async () => { if (editing) await updateProduction(editing.id,input); else await createProduction(input); close(); })}/></Modal>}
   </div>;
 }
 
-function ProductionForm({ production, rawMaterials, finishedProducts, onSubmit, onCancel }: {
-  production: Production | null; rawMaterials: Product[]; finishedProducts: Product[];
+function ProductionForm({ production, rawMaterials, finishedProducts, productRecipes, onSubmit, onCancel }: {
+  production: Production | null; rawMaterials: Product[]; finishedProducts: Product[]; productRecipes: AppData['productRecipes'];
   onSubmit: (input: { raw_material_id:string; finished_product_id:string; consumed_kg:number; produced_kg:number; occurred_at:string; notes:string }) => void; onCancel:()=>void;
 }) {
-  const [rawId,setRawId]=useState(production?.raw_material_id || rawMaterials[0]?.id || '');
   const [finishedId,setFinishedId]=useState(production?.finished_product_id || finishedProducts[0]?.id || '');
-  const [consumed,setConsumed]=useState(production?.consumed_kg || 0);
   const [produced,setProduced]=useState(production?.produced_kg || 0);
   const [date,setDate]=useState(production ? toInputDateTime(production.occurred_at) : toInputDateTime());
   const [notes,setNotes]=useState(production?.notes || '');
+  const recipe=productRecipes.find((item)=>item.product_id===finishedId);
+  const rawId=recipe?.raw_material_id || '';
   const raw=rawMaterials.find((p)=>p.id===rawId);
+  const consumed=recipe ? roundWeight(produced * recipe.consumption_kg) : 0;
   const loss=Math.max(consumed-produced,0); const productionYield=consumed>0 ? produced/consumed*100 : 0;
   return <form className="form-grid" onSubmit={(event)=>{event.preventDefault();onSubmit({raw_material_id:rawId,finished_product_id:finishedId,consumed_kg:consumed,produced_kg:produced,occurred_at:fromInputDateTime(date),notes});}}>
-    <Select label="Materia-prima" value={rawId} onChange={setRawId} options={rawMaterials.map(optionFromName)}/>
     <Select label="Produto acabado" value={finishedId} onChange={setFinishedId} options={finishedProducts.map(optionFromName)}/>
-    <label>Kg consumidos<input min="0.01" step="0.01" type="number" value={consumed} onChange={(e)=>setConsumed(Number(e.target.value))} required/></label>
-    <label>Kg produzidos<input min="0.01" max={consumed || undefined} step="0.01" type="number" value={produced} onChange={(e)=>setProduced(Number(e.target.value))} required/></label>
+    <label>Materia-prima<input value={raw?.name || 'Ficha tecnica nao cadastrada'} readOnly /></label>
+    <label>Kg produzidos<input inputMode="decimal" type="text" value={produced || ''} onChange={(e)=>setProduced(parseDecimalInput(e.target.value))} placeholder="0,00" required/></label>
+    <label>Kg consumidos<input value={consumed ? formatKg(consumed) : '0 kg'} readOnly /></label>
     <label>Data e hora<input type="datetime-local" value={date} onChange={(e)=>setDate(e.target.value)} required/></label>
     <label className="span-all">Observacao<textarea value={notes} onChange={(e)=>setNotes(e.target.value)}/></label>
+    {!recipe && <div className="notice warning span-all">Cadastre a ficha tecnica deste produto acabado antes de registrar producao.</div>}
     <div className="notice neutral span-all">Disponivel: {formatKg(raw?.stock_kg || 0)} • Perda: {formatKg(loss)} • Rendimento: {productionYield.toFixed(2)}% • Custo estimado: {formatMoney((raw?.average_cost || 0)*consumed)}</div>
-    <div className="form-actions"><button className="secondary-button" onClick={onCancel} type="button">Cancelar</button><button className="primary-button" disabled={!rawId||!finishedId||consumed<=0||produced<=0||produced>consumed||Boolean(raw&&consumed>raw.stock_kg+(production?.raw_material_id===rawId?production.consumed_kg:0))} type="submit"><Save size={18}/>Salvar</button></div>
+    <div className="form-actions"><button className="secondary-button" onClick={onCancel} type="button">Cancelar</button><button className="primary-button" disabled={!recipe||!rawId||!finishedId||consumed<=0||produced<=0||Boolean(raw&&consumed>raw.stock_kg+(production?.raw_material_id===rawId?production.consumed_kg:0))} type="submit"><Save size={18}/>Salvar</button></div>
   </form>;
-}
-
-function CustomerPricesPanel({ data, runAction }: PageProps) {
-  const [customerId,setCustomerId]=useState(''); const [productId,setProductId]=useState(''); const [price,setPrice]=useState('');
-  const finished=data.products.filter((p)=>p.active&&p.product_type==='produto_acabado');
-  return <section className="panel"><div className="panel-title-row"><div><h2>Precos por cliente</h2><span className="muted-text">Excecoes aplicadas automaticamente nas novas vendas</span></div></div>
-    <form className="form-grid" onSubmit={(event)=>{event.preventDefault();runAction('Preco do cliente salvo.',async()=>{await saveCustomerProductPrice({customer_id:customerId,product_id:productId,price_per_kg:Number(price)});setPrice('');});}}>
-      <Select label="Cliente" value={customerId} onChange={setCustomerId} options={data.customers.map(optionFromName)}/><Select label="Produto" value={productId} onChange={setProductId} options={finished.map(optionFromName)}/><label>Preco por kg<input min="0.01" step="0.01" type="number" value={price} onChange={(e)=>setPrice(e.target.value)} required/></label><div className="form-actions"><button className="primary-button" disabled={!customerId||!productId} type="submit"><Save size={18}/>Salvar preco</button></div>
-    </form>
-    <Table empty="Nenhum preco especifico cadastrado." headers={['Cliente','Produto','Preco/kg','']} rows={data.customerPrices.map((item)=>[customerName(data,item.customer_id),productName(data,item.product_id),formatMoney(item.price_per_kg),<button className="small-button danger-button" type="button" onClick={()=>runAction('Preco removido.',()=>deleteCustomerProductPrice(item.id))}>Remover</button>])}/>
-  </section>;
 }
 
 function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean }) {
@@ -2116,6 +2322,8 @@ function SaleForm({
   const productOptions = currentProduct && !products.some((product) => product.id === currentProduct.id) ? [...products, currentProduct] : products;
   const [productId, setProductId] = useState(sale?.product_id || '');
   const [customerId, setCustomerId] = useState(sale?.customer_id || '');
+  const [quickCustomers, setQuickCustomers] = useState<Customer[]>([]);
+  const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
   const [weight, setWeight] = useState(sale?.weight_kg || 0);
   const [date, setDate] = useState(sale ? toInputDateTime(sale.occurred_at) : toInputDateTime());
   const [notes, setNotes] = useState(sale?.notes || '');
@@ -2126,6 +2334,7 @@ function SaleForm({
   const [unitPrice, setUnitPrice] = useState(sale?.unit_price || 0);
   const total = roundMoney(unitPrice * weight);
   const blocked = Boolean(selectedProduct && weight > availableStock);
+  const customerOptions = [...data.customers, ...quickCustomers].map(optionFromName);
 
   useEffect(() => {
     setProductId(sale?.product_id || '');
@@ -2141,6 +2350,7 @@ function SaleForm({
   }, [customerId, productId, suggestedPrice, sale]);
 
   return (
+    <>
     <form
       className="form-grid"
       onSubmit={(event) => {
@@ -2157,7 +2367,22 @@ function SaleForm({
       }}
     >
       <Select label="Produto" value={productId} onChange={setProductId} options={productOptions.map(optionFromName)} />
-      <Select label="Cliente" value={customerId} onChange={setCustomerId} options={data.customers.map(optionFromName)} />
+      <label>
+        Cliente
+        <div className="inline-select-action">
+          <select value={customerId} onChange={(event) => setCustomerId(event.target.value)} required>
+            <option value="">Selecione</option>
+            {customerOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <button className="icon-button inline-add-button" onClick={() => setQuickCustomerOpen(true)} title="Cadastrar cliente rapido" type="button">
+            <Plus size={18} />
+          </button>
+        </div>
+      </label>
       <label>
         Peso vendido em kg
         <input min="0.01" step="0.01" value={weight} onChange={(event) => setWeight(Number(event.target.value))} type="number" required />
@@ -2187,6 +2412,98 @@ function SaleForm({
         <button className="primary-button" disabled={!productId || !customerId || blocked} type="submit">
           <Save size={18} />
           Salvar
+        </button>
+      </div>
+    </form>
+    {quickCustomerOpen && (
+      <Modal title="Cliente rapido" onClose={() => setQuickCustomerOpen(false)}>
+        <QuickCustomerForm
+          onCancel={() => setQuickCustomerOpen(false)}
+          onSubmit={async (name) => {
+            const customer = await createCustomer({ name, phone: '', document: '', notes: '' });
+            setQuickCustomers((current) => [...current, customer]);
+            setCustomerId(customer.id);
+            setQuickCustomerOpen(false);
+          }}
+        />
+      </Modal>
+    )}
+    </>
+  );
+}
+
+function QuickCustomerForm({ onSubmit, onCancel }: { onSubmit: (name: string) => Promise<void>; onCancel: () => void }) {
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  return (
+    <form
+      className="form-grid"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        setSaving(true);
+        setError('');
+        try {
+          await onSubmit(name);
+        } catch (err) {
+          setError(getMessage(err));
+        } finally {
+          setSaving(false);
+        }
+      }}
+    >
+      <label className="span-all">
+        Nome do cliente
+        <input value={name} onChange={(event) => setName(event.target.value)} required autoFocus />
+      </label>
+      {error && <div className="notice danger span-all">{error}</div>}
+      <div className="form-actions">
+        <button className="secondary-button" onClick={onCancel} type="button">
+          Cancelar
+        </button>
+        <button className="primary-button" disabled={saving || !name.trim()} type="submit">
+          <Save size={18} />
+          Salvar cliente
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function QuickSupplierForm({ onSubmit, onCancel }: { onSubmit: (name: string) => Promise<void>; onCancel: () => void }) {
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  return (
+    <form
+      className="form-grid"
+      onSubmit={async (event) => {
+        event.preventDefault();
+        setSaving(true);
+        setError('');
+        try {
+          await onSubmit(name);
+        } catch (err) {
+          setError(getMessage(err));
+        } finally {
+          setSaving(false);
+        }
+      }}
+    >
+      <label className="span-all">
+        Nome do fornecedor
+        <input value={name} onChange={(event) => setName(event.target.value)} required autoFocus />
+      </label>
+      {error && <div className="notice danger span-all">{error}</div>}
+      <div className="form-actions">
+        <button className="secondary-button" onClick={onCancel} type="button">
+          Cancelar
+        </button>
+        <button className="primary-button" disabled={saving || !name.trim()} type="submit">
+          <Save size={18} />
+          Salvar fornecedor
         </button>
       </div>
     </form>
@@ -3272,13 +3589,12 @@ function Select({
 
 function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+    <div className="modal-backdrop" role="presentation">
       <section
         className="modal-panel"
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="modal-header">
           <h2>{title}</h2>
@@ -3376,6 +3692,19 @@ function optionFromName(item: { id: string; name: string }) {
 
 function roundMoney(value: number) {
   return Math.round((value || 0) * 100) / 100;
+}
+
+function roundWeight(value: number) {
+  return Math.round((value || 0) * 10000) / 10000;
+}
+
+function parseDecimalInput(value: string) {
+  const cleaned = value.trim().replace(/\s/g, '');
+  if (!cleaned) return 0;
+  if (cleaned.includes(',') && cleaned.includes('.')) {
+    return Number(cleaned.replace(/\./g, '').replace(',', '.'));
+  }
+  return Number(cleaned.replace(',', '.'));
 }
 
 function expenseCategoryLabel(category: string) {
@@ -3525,7 +3854,6 @@ function validateVoiceCommand(command: ParsedVoiceCommand, data: AppData) {
   const messages: string[] = [];
   if (command.intent !== 'despesa' && !command.productName.trim()) messages.push('Informe o produto.');
   if (command.intent !== 'produto' && command.intent !== 'despesa' && command.quantity <= 0) messages.push('Informe uma quantidade maior que zero.');
-  if (command.intent === 'produto' && command.unitPrice <= 0 && command.totalValue <= 0) messages.push('Informe o preço de venda do produto.');
   if (command.intent === 'despesa' && command.totalValue <= 0) messages.push('Informe o valor da despesa.');
   if (command.intent === 'entrada' && command.unitPrice <= 0 && command.totalValue <= 0) messages.push('Informe preço unitário ou valor total da entrada.');
   if (command.intent === 'venda' && command.totalValue <= 0 && command.unitPrice <= 0) messages.push('Informe o valor da venda.');
