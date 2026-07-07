@@ -301,3 +301,44 @@ Visit https://react.dev/link/error-boundaries to learn more about error boundari
 Consider adding an error boundary to your tree to customize error handling behavior.
 Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
 
+[2m15:38:10[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mReferenceError[22m: Upload is not defined
+[39m > BackupPage src/App.tsx:4245:11
+    4243 |          </button>
+    4244 |          <label className="file-button">
+    4245 |            <Upload size={18} />
+         |             ^
+    4246 |            Importar JSON
+    4247 |            <input
+ > Object.react_stack_bottom_frame node_modules/react-dom/cjs/react-dom-client.development.js:25904:19
+ > renderWithHooks node_modules/react-dom/cjs/react-dom-client.development.js:7662:21
+ > updateFunctionComponent node_modules/react-dom/cjs/react-dom-client.development.js:10166:18
+ > beginWork node_modules/react-dom/cjs/react-dom-client.development.js:11778:17
+ > runWithFiberInDEV node_modules/react-dom/cjs/react-dom-client.development.js:871:29
+ > performUnitOfWork node_modules/react-dom/cjs/react-dom-client.development.js:17641:21
+ > workLoopSync node_modules/react-dom/cjs/react-dom-client.development.js:17469:40
+ > renderRootSync node_modules/react-dom/cjs/react-dom-client.development.js:17450:10
+ > performWorkOnRoot node_modules/react-dom/cjs/react-dom-client.development.js:16583:34
+
+[2m15:38:10[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22mAn error occurred in the <BackupPage> component.
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://react.dev/link/error-boundaries to learn more about error boundaries.
+
+[2m15:57:51[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mTypeError: Failed to fetch
+    at http://192.168.3.4:5174/node_modules/.vite/deps/@supabase_supabase-js.js?v=16130d2e:12976:22
+    at _handleRequest (http://192.168.3.4:5174/node_modules/.vite/deps/@supabase_supabase-js.js?v=16130d2e:13250:18)
+    at _request (http://192.168.3.4:5174/node_modules/.vite/deps/@supabase_supabase-js.js?v=16130d2e:13237:21)
+    at http://192.168.3.4:5174/node_modules/.vite/deps/@supabase_supabase-js.js?v=16130d2e:18000:18
+    at SupabaseAuthClient._useSession (http://192.168.3.4:5174/node_modules/.vite/deps/@supabase_supabase-js.js?v=16130d2e:17843:17)
+    at async SupabaseAuthClient._getUser (http://192.168.3.4:5174/node_modules/.vite/deps/@supabase_supabase-js.js?v=16130d2e:17992:11)
+    at async http://192.168.3.4:5174/node_modules/.vite/deps/@supabase_supabase-js.js?v=16130d2e:17980:11
+[2m15:57:51[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mTypeError: Failed to fetch
+    at http://192.168.3.4:5174/node_modules/.vite/deps/@supabase_supabase-js.js?v=16130d2e:12976:22
+    at _handleRequest (http://192.168.3.4:5174/node_modules/.vite/deps/@supabase_supabase-js.js?v=16130d2e:13250:18)
+    at _request (http://192.168.3.4:5174/node_modules/.vite/deps/@supabase_supabase-js.js?v=16130d2e:13237:21)
+    at http://192.168.3.4:5174/node_modules/.vite/deps/@supabase_supabase-js.js?v=16130d2e:18000:18
+    at SupabaseAuthClient._useSession (http://192.168.3.4:5174/node_modules/.vite/deps/@supabase_supabase-js.js?v=16130d2e:17843:17)
+    at async SupabaseAuthClient._getUser (http://192.168.3.4:5174/node_modules/.vite/deps/@supabase_supabase-js.js?v=16130d2e:17992:11)
+    at async http://192.168.3.4:5174/node_modules/.vite/deps/@supabase_supabase-js.js?v=16130d2e:17980:11
+[2m16:04:48[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `beff05cf-c589-4b58-80b4-278c3a0b4276`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[2m16:04:48[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `beff05cf-c589-4b58-80b4-278c3a0b4276`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.

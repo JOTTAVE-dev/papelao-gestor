@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import {
@@ -29,7 +29,6 @@ import {
   ShoppingCart,
   SlidersHorizontal,
   Truck,
-  Upload,
   Users,
   Warehouse,
   X,
@@ -50,8 +49,6 @@ import {
   deleteSupplier,
   deleteStockEntry,
   deleteProduction,
-  exportBackup,
-  importBackup,
   loadAppData,
   removeOperator,
   saveCustomer,
@@ -65,7 +62,7 @@ import {
   updateProduction,
   updateUserRole,
 } from './lib/repository';
-import { formatDateTime, formatKg, formatMoney, fromInputDateTime, todayRange, toInputDateTime } from './lib/format';
+import { formatDateTime, formatKg, formatMoney, fromInputDateTime, toInputDateTime } from './lib/format';
 import type { AppData, Customer, Expense, ExpenseCategory, Page, Product, Production, Sale, StockEntry, Supplier } from './lib/types';
 
 type ToastVariant = 'success' | 'info' | 'warning' | 'error';
@@ -104,6 +101,32 @@ const expenseLabels: Record<string, string> = {
 
 type VoiceIntent = 'entrada' | 'venda' | 'saida' | 'despesa' | 'produto';
 type VoiceStatus = 'idle' | 'listening' | 'processing' | 'completed' | 'error';
+
+type SaleFormInput = {
+  product_id: string;
+  customer_id: string;
+  weight_kg: number;
+  unit_price: number;
+  total_price: number;
+  occurred_at: string;
+  notes: string;
+};
+
+type SaleFormItem = {
+  product_id: string;
+  weight_kg: string;
+  unit_price: string;
+};
+
+type SaleListGroup = {
+  key: string;
+  sales: Sale[];
+  customer_id: string;
+  occurred_at: string;
+  notes: string | null;
+  weight_kg: number;
+  total_price: number;
+};
 
 type ParsedVoiceCommand = {
   intent: VoiceIntent;
@@ -144,30 +167,28 @@ declare global {
 
 const navItems = [
   { page: 'dashboard' as Page, label: 'Dashboard', icon: LayoutDashboard },
+  { page: 'production' as Page, label: 'Produção', icon: Warehouse },
   { page: 'products' as Page, label: 'Produtos', icon: Boxes },
   { page: 'customers' as Page, label: 'Clientes', icon: Users },
   { page: 'suppliers' as Page, label: 'Fornecedores', icon: Truck },
   { page: 'stock' as Page, label: 'Estoque', icon: Warehouse },
   { page: 'statement' as Page, label: 'Extrato', icon: Archive },
   { page: 'entries' as Page, label: 'Entradas', icon: PackagePlus },
-  { page: 'production' as Page, label: 'Producao', icon: Warehouse },
   { page: 'sales' as Page, label: 'Vendas', icon: ShoppingCart },
-  { page: 'voice' as Page, label: 'Lancar por audio', icon: Mic },
+  { page: 'voice' as Page, label: 'Lançar por áudio', icon: Mic },
   { page: 'expenses' as Page, label: 'Despesas', icon: ReceiptText },
-  { page: 'reports' as Page, label: 'Relatorios', icon: ReceiptText },
+  { page: 'reports' as Page, label: 'Relatórios', icon: ReceiptText },
   { page: 'admin' as Page, label: 'Admin', icon: ShieldCheck },
-  { page: 'backup' as Page, label: 'Backup', icon: Settings },
 ];
 
 const navGroups: Array<{ id: string; label: string; icon: typeof LayoutDashboard; pages: Page[]; collapsible?: boolean }> = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, pages: ['dashboard'] },
+  { id: 'production', label: 'Produção', icon: Warehouse, pages: ['production'] },
   { id: 'registers', label: 'Cadastros', icon: Boxes, pages: ['products', 'customers', 'suppliers'], collapsible: true },
   { id: 'stock', label: 'Estoque', icon: Warehouse, pages: ['stock', 'statement', 'entries'], collapsible: true },
   { id: 'finance', label: 'Financeiro', icon: CircleDollarSign, pages: ['sales', 'expenses', 'reports'], collapsible: true },
-  { id: 'production', label: 'Producao', icon: Warehouse, pages: ['production'] },
-  { id: 'voice', label: 'Lancar por audio', icon: Mic, pages: ['voice'] },
+  { id: 'voice', label: 'Lançar por áudio', icon: Mic, pages: ['voice'] },
   { id: 'admin', label: 'Admin', icon: ShieldCheck, pages: ['admin'] },
-  { id: 'backup', label: 'Backup', icon: Settings, pages: ['backup'] },
 ];
 
 const pageRoutes: Record<Page, string> = {
@@ -184,7 +205,6 @@ const pageRoutes: Record<Page, string> = {
   suppliers: '/fornecedores',
   customers: '/clientes',
   admin: '/admin',
-  backup: '/backup',
 };
 
 const routePages = Object.entries(pageRoutes).map(([pageName, route]) => ({
@@ -313,7 +333,7 @@ export default function App() {
   const sidebarExpanded = sidebarPinned || sidebarHovered;
   const supportOwnerId = isSuperAdmin ? data.currentProfile?.support_company_owner_id || null : null;
   const supportCompany = supportOwnerId ? data.companies.find((company) => company.owner_id === supportOwnerId) || null : null;
-  const supportRequired = isSuperAdmin && !supportOwnerId && page !== 'admin' && page !== 'backup';
+  const supportRequired = isSuperAdmin && !supportOwnerId && page !== 'admin';
   const scopedData =
     isSuperAdmin && supportOwnerId
       ? {
@@ -534,27 +554,29 @@ export default function App() {
 
         <section className="page-heading">
           <div>
-            <span className="eyebrow">RODPEL • Sistema de controle</span>
+            <span className="eyebrow">RODPEL - Sistema de controle</span>
             <h1>
               <CurrentIcon size={30} />
               {navItems.find((item) => item.page === page)?.label}
             </h1>
             {isSuperAdmin && supportCompany && <span className="muted-text">Suporte ativo em: {supportCompany.name}</span>}
           </div>
-          <div className="heading-actions">
-            <button className="secondary-button" type="button" onClick={() => navigateTo('reports')}>
-              <ReceiptText size={17} />
-              Relatório
-            </button>
-            <button className="secondary-button" type="button" onClick={() => navigateTo('products')}>
-              <Boxes size={17} />
-              Novo produto
-            </button>
-            <button className="primary-button" type="button" onClick={() => navigateTo('sales')}>
-              <ShoppingCart size={17} />
-              Nova venda
-            </button>
-          </div>
+          {page === 'dashboard' && (
+            <div className="heading-actions">
+              <button className="secondary-button" type="button" onClick={() => navigateTo('reports')}>
+                <ReceiptText size={17} />
+                Relatório
+              </button>
+              <button className="secondary-button" type="button" onClick={() => navigateTo('products')}>
+                <Boxes size={17} />
+                Novo produto
+              </button>
+              <button className="primary-button" type="button" onClick={() => navigateTo('sales')}>
+                <ShoppingCart size={17} />
+                Nova venda
+              </button>
+            </div>
+          )}
         </section>
 
         {supportRequired ? (
@@ -579,18 +601,17 @@ export default function App() {
             {page === 'reports' && <ReportsPage data={scopedData} />}
           </>
         )}
-        {page === 'backup' && <BackupPage runAction={runAction} />}
       </main>
       <nav className="mobile-bottom-nav" aria-label="Navegação principal mobile">
         <div className={mobileMenuOpen === 'more' ? 'bottom-menu-wrap open' : 'bottom-menu-wrap'}>
           <div className="bottom-create-popover bottom-side-popover">
             <button type="button" onClick={() => navigateTo('production')}>
               <Warehouse size={17} />
-              Producao
+              Produção
             </button>
             <button type="button" onClick={() => navigateTo('voice')}>
               <Mic size={17} />
-              Lancar por audio
+              Lançar por áudio
             </button>
             {canOpenAdmin && (
               <button type="button" onClick={() => navigateTo('admin')}>
@@ -598,13 +619,9 @@ export default function App() {
                 Admin
               </button>
             )}
-            <button type="button" onClick={() => navigateTo('backup')}>
-              <ShieldCheck size={17} />
-              Backup
-            </button>
           </div>
           <button
-            className={['production', 'voice', 'admin', 'backup'].includes(page) || mobileMenuOpen === 'more' ? 'bottom-nav-item active' : 'bottom-nav-item'}
+            className={['production', 'voice', 'admin'].includes(page) || mobileMenuOpen === 'more' ? 'bottom-nav-item active' : 'bottom-nav-item'}
             onClick={() => setMobileMenuOpen((current) => (current === 'more' ? null : 'more'))}
             type="button"
           >
@@ -674,7 +691,7 @@ export default function App() {
             </button>
             <button type="button" onClick={() => navigateTo('reports')}>
               <ReceiptText size={17} />
-              Relatorios
+              Relatórios
             </button>
           </div>
           <button
@@ -979,15 +996,27 @@ function MissingConfig() {
 }
 
 function Dashboard({ data }: { data: AppData }) {
-  const { start, end } = todayRange();
-  const salesToday = data.sales.filter((sale) => sale.occurred_at >= start && sale.occurred_at <= end);
-  const expensesToday = data.expenses.filter((expense) => expense.occurred_at >= start && expense.occurred_at <= end);
-  const totalSales = salesToday.reduce((sum, sale) => sum + sale.total_price, 0);
-  const totalExpenses = expensesToday.reduce((sum, expense) => sum + expense.amount, 0);
+  const now = new Date();
+  const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const inCurrentMonth = (value: string) => {
+    const date = new Date(value);
+    return date >= periodStart && date <= periodEnd;
+  };
+  const salesInPeriod = data.sales.filter((sale) => inCurrentMonth(sale.occurred_at));
+  const expensesInPeriod = data.expenses.filter((expense) => inCurrentMonth(expense.occurred_at));
+  const entriesInPeriod = data.entries.filter((entry) => inCurrentMonth(entry.occurred_at));
+  const productionsInPeriod = data.productions.filter((production) => inCurrentMonth(production.occurred_at));
+  const totalSales = salesInPeriod.reduce((sum, sale) => sum + sale.total_price, 0);
+  const totalExpenses = expensesInPeriod.reduce((sum, expense) => sum + expense.amount, 0);
+  const totalEntries = entriesInPeriod.reduce((sum, entry) => sum + entry.total_cost, 0);
+  const totalOutflows = totalExpenses + totalEntries;
+  const cashBalance = totalSales - totalOutflows;
+  const totalProduction = productionsInPeriod.reduce((sum, production) => sum + production.transferred_cost, 0);
   const lowStock = data.products.filter((product) => product.active && product.stock_kg <= product.min_stock_kg);
   const topProducts = data.products
     .map((product) => {
-      const productSales = data.sales.filter((sale) => sale.product_id === product.id);
+      const productSales = salesInPeriod.filter((sale) => sale.product_id === product.id);
       return {
         product,
         soldKg: productSales.reduce((sum, sale) => sum + sale.weight_kg, 0),
@@ -999,18 +1028,20 @@ function Dashboard({ data }: { data: AppData }) {
   const maxTopTotal = Math.max(...topProducts.map((item) => item.total), 1);
   const recent = [
     ...data.entries.map((entry) => ({ kind: 'Entrada', at: entry.occurred_at, text: `${productName(data, entry.product_id)} +${formatKg(entry.weight_kg)}` })),
-    ...data.productions.map((production) => ({ kind: 'Producao', at: production.occurred_at, text: `${productName(data, production.finished_product_id)} +${formatKg(production.produced_kg)} (perda ${formatKg(production.loss_kg)})` })),
+    ...data.productions.map((production) => ({ kind: 'Produção', at: production.occurred_at, text: `${productName(data, production.finished_product_id)} +${formatKg(production.produced_kg)} (perda ${formatKg(production.loss_kg)})` })),
     ...data.sales.map((sale) => ({ kind: 'Venda', at: sale.occurred_at, text: `${productName(data, sale.product_id)} -${formatKg(sale.weight_kg)}` })),
     ...data.expenses.map((expense) => ({ kind: 'Despesa', at: expense.occurred_at, text: `${expense.description} ${formatMoney(expense.amount)}` })),
   ]
     .sort((a, b) => b.at.localeCompare(a.at))
     .slice(0, 8);
+  const maxGraphValue = Math.max(totalEntries, totalSales, totalProduction, data.products.length, 1);
+  const graphHeight = (value: number) => Math.max((value / maxGraphValue) * 92, value > 0 ? 18 : 12);
 
   return (
     <div className="content-grid">
-      <Metric icon={CircleDollarSign} label="Vendas hoje" value={formatMoney(totalSales)} />
-      <Metric icon={ReceiptText} label="Despesas hoje" value={formatMoney(totalExpenses)} />
-      <Metric icon={Archive} label="Saldo estimado" value={formatMoney(totalSales - totalExpenses)} />
+      <Metric icon={CircleDollarSign} label="Vendas no mês" value={formatMoney(totalSales)} />
+      <Metric icon={ReceiptText} label="Gastos no mês" value={formatMoney(totalOutflows)} />
+      <Metric icon={Archive} label="Saldo do mês" value={formatMoney(cashBalance)} />
       <Metric icon={AlertTriangle} label="Estoque baixo" value={`${lowStock.length} produtos`} />
 
       <section className="panel performance-card span-2">
@@ -1026,9 +1057,9 @@ function Dashboard({ data }: { data: AppData }) {
         </div>
         <div className="bar-chart" aria-label="Resumo visual de performance">
           {[
-            { label: 'Produtos', a: Math.min(data.products.length * 12, 92), b: Math.min(data.products.filter((product) => product.active).length * 14, 88) },
-            { label: 'Entradas', a: Math.min(data.entries.length * 16, 94), b: Math.min(salesToday.length * 18, 86) },
-            { label: 'Financeiro', a: Math.min(totalSales / 80, 92), b: Math.min(Math.max(totalSales - totalExpenses, 0) / 80, 86) },
+            { label: 'Produtos', a: graphHeight(data.products.length), b: graphHeight(data.products.filter((product) => product.active).length) },
+            { label: 'Entradas', a: graphHeight(totalEntries), b: graphHeight(totalSales) },
+            { label: 'Financeiro', a: graphHeight(totalSales), b: graphHeight(Math.max(cashBalance, 0)) },
           ].map((group) => (
             <div className="bar-group" key={group.label}>
               <div className="bars">
@@ -1074,8 +1105,8 @@ function Dashboard({ data }: { data: AppData }) {
       <section className="panel span-2">
         <h2>Alertas de estoque</h2>
         <Table
-          empty="Nenhum produto abaixo do minimo."
-          headers={['Produto', 'Categoria', 'Estoque', 'Minimo']}
+          empty="Nenhum produto abaixo do mínimo."
+          headers={['Produto', 'Categoria', 'Estoque', 'Mínimo']}
           mobileCards={false}
           rows={lowStock.map((product) => [
             product.name,
@@ -1092,8 +1123,8 @@ function Dashboard({ data }: { data: AppData }) {
           <button className="link-button" type="button">Ver tudo</button>
         </div>
         <Table
-          empty="Nenhuma movimentacao registrada."
-          headers={['Tipo', 'Descricao', 'Data']}
+          empty="Nenhuma movimentação registrada."
+          headers={['Tipo', 'Descrição', 'Data']}
           mobileCards={false}
           rows={recent.map((item) => [item.kind, item.text, formatDateTime(item.at)])}
         />
@@ -1454,7 +1485,7 @@ function ProductsPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boole
           headers={isAdmin ? ['Produto', 'Tipo', 'Categoria', 'Preco/kg', 'Status', 'Ações'] : ['Produto', 'Tipo', 'Categoria', 'Preco/kg', 'Status', '']}
           rows={filtered.map((product) => [
             <strong>{product.name}</strong>,
-            product.product_type === 'materia_prima' ? 'Materia-prima' : product.product_type === 'produto_acabado' ? 'Produto acabado' : 'Classificar',
+            product.product_type === 'materia_prima' ? 'Matéria-prima' : product.product_type === 'produto_acabado' ? 'Produto acabado' : 'Classificar',
             product.category,
             product.product_type === 'materia_prima' ? '-' : formatMoney(product.price_per_kg),
             product.active ? 'Ativo' : 'Inativo',
@@ -1511,7 +1542,7 @@ function ProductsPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boole
               <span>Preco por kg</span>
               <strong>{viewing.product_type === 'materia_prima' ? '-' : formatMoney(viewing.price_per_kg)}</strong>
             </div>
-            <div><span>Tipo</span><strong>{viewing.product_type === 'materia_prima' ? 'Materia-prima' : viewing.product_type === 'produto_acabado' ? 'Produto acabado' : 'Nao classificado'}</strong></div>
+            <div><span>Tipo</span><strong>{viewing.product_type === 'materia_prima' ? 'Matéria-prima' : viewing.product_type === 'produto_acabado' ? 'Produto acabado' : 'Nao classificado'}</strong></div>
             {viewing.product_type === 'produto_acabado' && (
               <ProductRecipeDetails product={viewing} data={data} />
             )}
@@ -1593,7 +1624,7 @@ function StockPage({ data }: { data: AppData }) {
           headers={['Produto', 'Tipo', 'Categoria', 'Estoque atual', 'Estoque minimo', 'Custo medio', 'Valor em estoque', 'Status']}
           rows={filtered.map((product) => [
             <strong>{product.name}</strong>,
-            product.product_type === 'materia_prima' ? 'Materia-prima' : product.product_type === 'produto_acabado' ? 'Produto acabado' : 'Classificar',
+            product.product_type === 'materia_prima' ? 'Matéria-prima' : product.product_type === 'produto_acabado' ? 'Produto acabado' : 'Classificar',
             product.category,
             formatKg(product.stock_kg),
             formatKg(product.min_stock_kg),
@@ -1665,7 +1696,7 @@ function StatementPage({ data }: { data: AppData }) {
         <PanelSearch value={query} onChange={setQuery} placeholder="Buscar por produto, tipo, fornecedor, cliente ou observacao" />
         <Table
           empty="Nenhum movimento registrado."
-          headers={['Data', 'Produto', 'Movimento', 'Origem/Destino', 'Entrada', 'Saida', 'Valor', 'Observacao']}
+          headers={['Data', 'Produto', 'Movimento', 'Origem/Destino', 'Entrada', 'Saida', 'Valor', 'Observação']}
           rows={filtered.map((movement) => [
             formatDateTime(movement.occurred_at),
             <strong>{movement.product}</strong>,
@@ -1695,7 +1726,7 @@ function ProductRecipeDetails({ product, data }: { product: Product; data: AppDa
   return (
     <>
       <div>
-        <span>Materia-prima</span>
+        <span>Matéria-prima</span>
         <strong>{productName(data, recipe.raw_material_id)}</strong>
       </div>
       <div>
@@ -1737,7 +1768,7 @@ function ProductForm({
   const [recipeRawMaterialId, setRecipeRawMaterialId] = useState(currentRecipe?.raw_material_id || '');
   const [recipeConsumption, setRecipeConsumption] = useState(currentRecipe ? String(currentRecipe.consumption_kg) : '');
   const productNameOptions = Array.from(new Set(products.map((item) => item.name).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-  const categoryLabel = productType === 'materia_prima' ? 'Materia-prima' : 'Produto acabado';
+  const categoryLabel = productType === 'materia_prima' ? 'Matéria-prima' : 'Produto acabado';
   const duplicate = products.some(
     (item) => item.id !== product?.id && normalizeName(item.name) === normalizeName(name),
   );
@@ -1779,7 +1810,7 @@ function ProductForm({
         </datalist>
       </label>
       {duplicate && <div className="notice danger span-all">Ja existe um produto cadastrado com esse nome.</div>}
-      <Select label="Categoria" value={productType} onChange={(value) => setProductType(value as 'materia_prima' | 'produto_acabado')} options={[{ value: 'materia_prima', label: 'Materia-prima' }, { value: 'produto_acabado', label: 'Produto acabado' }]} />
+      <Select label="Categoria" value={productType} onChange={(value) => setProductType(value as 'materia_prima' | 'produto_acabado')} options={[{ value: 'materia_prima', label: 'Matéria-prima' }, { value: 'produto_acabado', label: 'Produto acabado' }]} />
       {productType === 'materia_prima' && (
         <div className="notice neutral span-all">
           O custo da materia-prima e informado em Estoque &gt; Entradas, por fornecedor e por compra.
@@ -1787,7 +1818,7 @@ function ProductForm({
       )}
       {productType === 'produto_acabado' && (
         <>
-          <Select label="Materia-prima da ficha tecnica" value={recipeRawMaterialId} onChange={setRecipeRawMaterialId} options={rawMaterialOptions.map(optionFromName)} />
+          <Select label="Matéria-prima da ficha tecnica" value={recipeRawMaterialId} onChange={setRecipeRawMaterialId} options={rawMaterialOptions.map(optionFromName)} />
           <label>
             Consumo de materia-prima por kg
             <input inputMode="decimal" value={recipeConsumption} onChange={(event) => setRecipeConsumption(event.target.value)} placeholder="0,00" type="text" />
@@ -1843,7 +1874,7 @@ function EntriesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolea
         <PanelSearch value={query} onChange={setQuery} placeholder="Buscar por produto, fornecedor ou observacao" />
         <Table
           empty="Nenhuma entrada registrada."
-          headers={['Produto', 'Fornecedor', 'Peso', 'Custo/kg', 'Custo total', 'Data', 'Acoes']}
+          headers={['Produto', 'Fornecedor', 'Peso', 'Custo/kg', 'Custo total', 'Data', 'Ações']}
           rows={filtered.map((entry) => [
             productName(data, entry.product_id),
             supplierName(data, entry.supplier_id),
@@ -2057,7 +2088,7 @@ function EntryForm({
         <input value={date} onChange={(event) => setDate(event.target.value)} type="datetime-local" required />
       </label>
       <label className="span-all">
-        Observacao
+        Observação
         <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
       </label>
       <div className="form-actions">
@@ -2117,7 +2148,7 @@ function EntryDetails({ entry, data, compact = false }: { entry: StockEntry; dat
       </div>
       {entry.notes && (
         <div>
-          <span>Observacao</span>
+          <span>Observação</span>
           <strong>{entry.notes}</strong>
         </div>
       )}
@@ -2133,13 +2164,13 @@ function ProductionPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boo
   const close = () => { setCreating(false); setEditing(null); };
   return <div className="admin-layout">
     <section className="panel">
-      <div className="panel-title-row"><div><h2>Historico de producao</h2><span className="muted-text">Transformacao de materia-prima em produtos acabados</span></div><button className="primary-button" onClick={() => setCreating(true)} type="button"><Plus size={18}/>Nova producao</button></div>
-      <Table empty="Nenhuma producao registrada." headers={['Data','Materia-prima','Produto acabado','Consumido','Produzido','Perda','Rendimento','Custo','Acoes']} rows={data.productions.map((production) => [
+      <div className="panel-title-row"><div><h2>Histórico de produção</h2><span className="muted-text">Transformação de matéria-prima em produtos acabados</span></div><button className="primary-button" onClick={() => setCreating(true)} type="button"><Plus size={18}/>Nova produção</button></div>
+      <Table empty="Nenhuma produção registrada." headers={['Data','Matéria-prima','Produto acabado','Consumido','Produzido','Perda','Rendimento','Custo','Ações']} rows={data.productions.map((production) => [
         formatDateTime(production.occurred_at), productName(data, production.raw_material_id), productName(data, production.finished_product_id), formatKg(production.consumed_kg), formatKg(production.produced_kg), formatKg(production.loss_kg), `${production.yield_percent.toFixed(2)}%`, formatMoney(production.transferred_cost),
-        isAdmin ? <div className="row-actions"><button className="small-button" onClick={() => setEditing(production)} type="button">Editar</button><button className="small-button danger-button" onClick={() => confirmAction('Excluir esta producao e reverter os estoques?', () => runAction('Producao excluida.', () => deleteProduction(production.id)))} type="button">Apagar</button></div> : ''
+        isAdmin ? <div className="row-actions"><button className="small-button" onClick={() => setEditing(production)} type="button">Editar</button><button className="small-button danger-button" onClick={() => confirmAction('Excluir esta produção e reverter os estoques?', () => runAction('Produção excluida.', () => deleteProduction(production.id)))} type="button">Apagar</button></div> : ''
       ])}/>
     </section>
-    {(creating || editing) && <Modal title={editing ? 'Editar producao' : 'Nova producao'} onClose={close}><ProductionForm production={editing} rawMaterials={rawMaterials} finishedProducts={finishedProducts} productRecipes={data.productRecipes} onCancel={close} onSubmit={(input) => runAction(editing ? 'Producao atualizada.' : 'Producao registrada.', async () => { if (editing) await updateProduction(editing.id,input); else await createProduction(input); close(); })}/></Modal>}
+    {(creating || editing) && <Modal title={editing ? 'Editar produção' : 'Nova produção'} onClose={close}><ProductionForm production={editing} rawMaterials={rawMaterials} finishedProducts={finishedProducts} productRecipes={data.productRecipes} onCancel={close} onSubmit={(input) => runAction(editing ? 'Produção atualizada.' : 'Produção registrada.', async () => { if (editing) await updateProduction(editing.id,input); else await createProduction(input); close(); })}/></Modal>}
   </div>;
 }
 
@@ -2158,13 +2189,13 @@ function ProductionForm({ production, rawMaterials, finishedProducts, productRec
   const loss=Math.max(consumed-produced,0); const productionYield=consumed>0 ? produced/consumed*100 : 0;
   return <form className="form-grid" onSubmit={(event)=>{event.preventDefault();onSubmit({raw_material_id:rawId,finished_product_id:finishedId,consumed_kg:consumed,produced_kg:produced,occurred_at:fromInputDateTime(date),notes});}}>
     <Select label="Produto acabado" value={finishedId} onChange={setFinishedId} options={finishedProducts.map(optionFromName)}/>
-    <label>Materia-prima<input value={raw?.name || 'Ficha tecnica nao cadastrada'} readOnly /></label>
+    <label>Matéria-prima<input value={raw?.name || 'Ficha técnica não cadastrada'} readOnly /></label>
     <label>Kg produzidos<input inputMode="decimal" type="text" value={produced || ''} onChange={(e)=>setProduced(parseDecimalInput(e.target.value))} placeholder="0,00" required/></label>
     <label>Kg consumidos<input value={consumed ? formatKg(consumed) : '0 kg'} readOnly /></label>
     <label>Data e hora<input type="datetime-local" value={date} onChange={(e)=>setDate(e.target.value)} required/></label>
-    <label className="span-all">Observacao<textarea value={notes} onChange={(e)=>setNotes(e.target.value)}/></label>
-    {!recipe && <div className="notice warning span-all">Cadastre a ficha tecnica deste produto acabado antes de registrar producao.</div>}
-    <div className="notice neutral span-all">Disponivel: {formatKg(raw?.stock_kg || 0)} • Perda: {formatKg(loss)} • Rendimento: {productionYield.toFixed(2)}% • Custo estimado: {formatMoney((raw?.average_cost || 0)*consumed)}</div>
+    <label className="span-all">Observação<textarea value={notes} onChange={(e)=>setNotes(e.target.value)}/></label>
+    {!recipe && <div className="notice warning span-all">Cadastre a ficha técnica deste produto acabado antes de registrar produção.</div>}
+    <div className="notice neutral span-all">Disponível: {formatKg(raw?.stock_kg || 0)} • Perda: {formatKg(loss)} • Rendimento: {productionYield.toFixed(2)}% • Custo estimado: {formatMoney((raw?.average_cost || 0)*consumed)}</div>
     <div className="form-actions"><button className="secondary-button" onClick={onCancel} type="button">Cancelar</button><button className="primary-button" disabled={!recipe||!rawId||!finishedId||consumed<=0||produced<=0||Boolean(raw&&consumed>raw.stock_kg+(production?.raw_material_id===rawId?production.consumed_kg:0))} type="submit"><Save size={18}/>Salvar</button></div>
   </form>;
 }
@@ -2173,14 +2204,432 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
   const activeProducts = data.products.filter((product) => product.active && product.product_type === 'produto_acabado');
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(false);
-  const [viewing, setViewing] = useState<Sale | null>(null);
+  const [viewing, setViewing] = useState<SaleListGroup | null>(null);
   const [editing, setEditing] = useState<Sale | null>(null);
   const [deleting, setDeleting] = useState<Sale | null>(null);
-  const filtered = filterBy(data.sales, query, (sale) => `${productName(data, sale.product_id)} ${customerName(data, sale.customer_id)} ${sale.notes || ''}`);
+  const saleGroups = [...data.sales]
+    .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
+    .reduce<SaleListGroup[]>((groups, sale) => {
+      const key = `${sale.customer_id}|${sale.occurred_at}|${sale.notes || ''}`;
+      const group = groups.find((item) => item.key === key);
+      if (group) {
+        group.sales.push(sale);
+        group.weight_kg += sale.weight_kg;
+        group.total_price += sale.total_price;
+      } else {
+        groups.push({
+          key,
+          sales: [sale],
+          customer_id: sale.customer_id,
+          occurred_at: sale.occurred_at,
+          notes: sale.notes,
+          weight_kg: sale.weight_kg,
+          total_price: sale.total_price,
+        });
+      }
+      return groups;
+    }, []);
+  const filtered = filterBy(saleGroups, query, (group) => `${group.sales.map((sale) => productName(data, sale.product_id)).join(' ')} ${customerName(data, group.customer_id)} ${group.notes || ''}`);
   const closeSaleModal = () => {
     setCreating(false);
     setEditing(null);
   };
+  const escapeReceipt = (value: ReactNode) =>
+    String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  const receiptDate = (value: string) => new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Fortaleza' }).format(new Date(value));
+
+  function buildReceiptDocument(group: SaleListGroup) {
+    const receiptNumber = group.sales[0]?.id.slice(0, 8).toUpperCase() || '';
+    const rows = group.sales.map((sale) => [
+      productName(data, sale.product_id),
+      formatKg(sale.weight_kg),
+      formatMoney(sale.unit_price),
+      formatMoney(sale.total_price),
+    ]);
+    const blankRows = Array.from({ length: Math.max(5 - rows.length, 0) });
+
+    return `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Recibo RODPEL ${escapeReceipt(receiptNumber)}</title>
+          <style>
+            @page { margin: 6mm; size: A4; }
+            * { box-sizing: border-box; }
+            body {
+              color: #101010;
+              font-family: Arial, Helvetica, sans-serif;
+              margin: 0;
+            }
+            .receipt {
+              border: 2px solid #111;
+              height: 136mm;
+              overflow: hidden;
+              padding: 10px 18px 10px;
+            }
+            .header {
+              align-items: center;
+              display: grid;
+              gap: 18px;
+              grid-template-columns: 178px 1fr;
+              margin-bottom: 8px;
+            }
+            .brand-block {
+              align-items: center;
+              display: grid;
+              justify-items: center;
+            }
+            .logo-mark {
+              height: 86px;
+              position: relative;
+              width: 132px;
+            }
+            .logo-r {
+              color: #f26a00;
+              font-family: Arial Black, Impact, Arial, sans-serif;
+              font-size: 104px;
+              font-weight: 950;
+              left: 33px;
+              letter-spacing: -12px;
+              line-height: 0.75;
+              position: absolute;
+              top: 0;
+              transform: scaleX(1.08);
+            }
+            .paper-stack {
+              left: 0;
+              position: absolute;
+              width: 54px;
+            }
+            .paper-stack.top { top: 12px; }
+            .paper-stack.bottom { top: 50px; }
+            .paper-stack i {
+              background: #f26a00;
+              clip-path: polygon(0 0, 72% 0, 100% 50%, 72% 100%, 0 100%);
+              display: block;
+              height: 3px;
+              margin-bottom: 2px;
+            }
+            .paper-stack i:nth-child(2) { margin-left: 4px; width: 50px; }
+            .paper-stack i:nth-child(3) { margin-left: 8px; width: 46px; }
+            .paper-stack i:nth-child(4) { margin-left: 12px; width: 42px; }
+            .paper-stack i:nth-child(5) { margin-left: 16px; width: 38px; }
+            .paper-stack i:nth-child(6) { margin-left: 20px; width: 34px; }
+            .paper-stack i:nth-child(7) { margin-left: 24px; width: 30px; }
+            .paper-stack i:nth-child(8) { margin-left: 28px; width: 26px; }
+            .paper-stack i:nth-child(9) { margin-left: 32px; width: 22px; }
+            .paper-stack i:nth-child(10) { margin-left: 36px; width: 18px; }
+            .paper-stack i:nth-child(11) { margin-left: 40px; width: 14px; }
+            .paper-stack i:nth-child(12) { margin-left: 44px; width: 10px; }
+            .paper-stack i:nth-child(13) { margin-left: 48px; width: 6px; }
+            .paper-stack i:nth-child(14) { margin-left: 52px; width: 2px; }
+            .paper-cut {
+              background: #fff;
+              border-radius: 0 999px 999px 0;
+              height: 30px;
+              left: 58px;
+              position: absolute;
+              top: 25px;
+              width: 42px;
+            }
+            .brand-name {
+              font-size: 24px;
+              font-weight: 950;
+              letter-spacing: 1px;
+              margin-top: 2px;
+            }
+            .company h1 {
+              font-size: 20px;
+              margin: 0 0 8px;
+            }
+            .company p {
+              align-items: center;
+              display: flex;
+              font-size: 13px;
+              gap: 8px;
+              margin: 5px 0;
+            }
+            .company b {
+              color: #f26a00;
+              display: inline-block;
+              font-size: 16px;
+              text-align: center;
+              width: 18px;
+            }
+            .top-rule,
+            .bottom-rule {
+              border: 0;
+              border-top: 2px solid #f26a00;
+              margin: 0;
+            }
+            .title-row {
+              align-items: end;
+              display: grid;
+              grid-template-columns: 1fr auto 1fr;
+              margin: 8px 0 8px;
+            }
+            .title-line {
+              border-top: 2px solid #f26a00;
+              margin: 0 18px 12px;
+            }
+            .title {
+              color: #f26a00;
+              font-size: 31px;
+              font-weight: 950;
+              letter-spacing: 2px;
+            }
+            .number {
+              color: #f26a00;
+              font-size: 15px;
+              font-weight: 900;
+              justify-self: end;
+              padding-bottom: 10px;
+            }
+            .number span {
+              border-bottom: 1px solid #111;
+              color: #111;
+              display: inline-block;
+              min-width: 126px;
+              padding-left: 8px;
+            }
+            .meta {
+              display: grid;
+              gap: 6px;
+              grid-template-columns: 1fr 1fr;
+              margin: 0 8px 6px;
+            }
+            .meta div {
+              border-bottom: 1px solid #999;
+              font-size: 12px;
+              padding-bottom: 3px;
+            }
+            table {
+              border-collapse: separate;
+              border-spacing: 0;
+              font-size: 12px;
+              overflow: hidden;
+              width: 100%;
+            }
+            th {
+              background: linear-gradient(#ff7a0d, #e85e00);
+              border: 1px solid #111;
+              color: #fff;
+              font-size: 13px;
+              padding: 4px 6px;
+              text-align: center;
+            }
+            td {
+              border-bottom: 1px solid #111;
+              border-left: 1px solid #111;
+              height: 25px;
+              padding: 3px 6px;
+            }
+            td:last-child,
+            th:last-child {
+              border-right: 1px solid #111;
+            }
+            tbody tr:first-child td {
+              border-top: 0;
+            }
+            .desc { width: 50%; }
+            .qty { text-align: center; width: 14%; }
+            .money { text-align: right; width: 18%; }
+            .total-label {
+              font-size: 14px;
+              font-weight: 950;
+              text-align: right;
+            }
+            .grand-total {
+              background: #fff3e6;
+              font-size: 14px;
+              font-weight: 950;
+              text-align: right;
+            }
+            .footer {
+              display: grid;
+              gap: 10px 18px;
+              grid-template-columns: 1.3fr 0.7fr;
+              margin-top: 10px;
+            }
+            .payment h3 {
+              font-size: 12px;
+              margin: 0 0 7px;
+            }
+            .checks {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 12px;
+              font-size: 11px;
+            }
+            .box {
+              border: 1px solid #111;
+              display: inline-block;
+              height: 12px;
+              margin-right: 4px;
+              vertical-align: middle;
+              width: 12px;
+            }
+            .date-box {
+              align-self: end;
+              font-size: 11px;
+              text-align: center;
+            }
+            .date-line {
+              border-bottom: 1px solid #111;
+              display: inline-block;
+              margin-top: 10px;
+              min-width: 150px;
+              padding-bottom: 3px;
+            }
+            .obs {
+              font-size: 11px;
+              grid-column: 1 / -1;
+            }
+            .obs-line {
+              border-bottom: 1px solid #111;
+              display: inline-block;
+              margin-left: 12px;
+              min-width: 420px;
+              padding-bottom: 3px;
+            }
+            .signatures {
+              display: grid;
+              gap: 54px;
+              grid-column: 1 / -1;
+              grid-template-columns: 1fr 1fr;
+              margin-top: 12px;
+              text-align: center;
+              font-size: 11px;
+            }
+            .signature-line {
+              border-top: 1px solid #111;
+              display: block;
+              margin: 0 auto 5px;
+              width: 78%;
+            }
+            .thanks {
+              align-items: center;
+              color: #f26a00;
+              display: grid;
+              font-family: "Brush Script MT", cursive;
+              font-size: 20px;
+              gap: 18px;
+              grid-column: 1 / -1;
+              grid-template-columns: 1fr auto 1fr;
+              margin-top: 7px;
+              text-align: center;
+            }
+            .thanks::before,
+            .thanks::after {
+              border-top: 2px solid #f26a00;
+              content: "";
+            }
+            @media print {
+              body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+            }
+          </style>
+        </head>
+        <body>
+          <main class="receipt">
+            <section class="header">
+              <div class="brand-block">
+                <div class="logo-mark">
+                  <div class="paper-stack top">
+                    <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                  </div>
+                  <div class="paper-stack bottom">
+                    <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                  </div>
+                  <div class="logo-r">R</div>
+                  <div class="paper-cut"></div>
+                </div>
+                <div class="brand-name">RODPEL</div>
+              </div>
+              <div class="company">
+                <h1>RODPEL COM?RCIO E SERVI?OS</h1>
+                <p><b>?</b> Tabapuazinho, Caucaia - CE</p>
+                <p><b>?</b> (85) 99762-1754 &nbsp; | &nbsp; (85) 99818-0669</p>
+                <p><b>?</b> CNPJ: 00.000.000/0001-00</p>
+              </div>
+            </section>
+            <hr class="top-rule" />
+            <section class="title-row">
+              <div class="title-line"></div>
+              <div class="title">RECIBO</div>
+              <div class="number">NÂº <span>${escapeReceipt(receiptNumber)}</span></div>
+            </section>
+            <section class="meta">
+              <div><strong>Cliente:</strong> ${escapeReceipt(customerName(data, group.customer_id))}</div>
+              <div><strong>Data:</strong> ${escapeReceipt(formatDateTime(group.occurred_at))}</div>
+            </section>
+            <table>
+              <thead>
+                <tr>
+                  <th class="desc">DESCRI??O</th>
+                  <th class="qty">QUANT.</th>
+                  <th class="money">V. UNIT. (R$)</th>
+                  <th class="money">V. TOTAL (R$)</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map((row) => `
+                  <tr>
+                    <td>${escapeReceipt(row[0])}</td>
+                    <td class="qty">${escapeReceipt(row[1])}</td>
+                    <td class="money">${escapeReceipt(row[2])}</td>
+                    <td class="money">${escapeReceipt(row[3])}</td>
+                  </tr>
+                `).join('')}
+                ${blankRows.map(() => '<tr><td></td><td></td><td></td><td></td></tr>').join('')}
+                <tr>
+                  <td class="total-label" colspan="3">TOTAL GERAL (R$)</td>
+                  <td class="grand-total">${escapeReceipt(formatMoney(group.total_price))}</td>
+                </tr>
+              </tbody>
+            </table>
+            <section class="footer">
+              <div class="payment">
+                <h3>Forma de pagamento:</h3>
+                <div class="checks">
+                  <span><i class="box"></i>Dinheiro</span>
+                  <span><i class="box"></i>Pix</span>
+                  <span><i class="box"></i>Transferência</span>
+                  <span><i class="box"></i>Outro: __________</span>
+                </div>
+              </div>
+              <div class="date-box">
+                Data do recebimento:<br />
+                <span class="date-line">${escapeReceipt(receiptDate(group.occurred_at))}</span>
+              </div>
+              <div class="obs">Observações:<span class="obs-line">${escapeReceipt(group.notes || '')}</span></div>
+              <div class="signatures">
+                <div><span class="signature-line"></span>Assinatura do Recebedor</div>
+                <div><span class="signature-line"></span>Assinatura do Pagador</div>
+              </div>
+              <div class="thanks">Agradecemos a preferência!</div>
+            </section>
+          </main>
+        </body>
+      </html>
+    `;
+  }
+
+  function exportReceipt(group: SaleListGroup) {
+    const receiptWindow = window.open('', '_blank');
+    if (!receiptWindow) return;
+    receiptWindow.document.open();
+    receiptWindow.document.write(buildReceiptDocument(group));
+    receiptWindow.document.close();
+    receiptWindow.focus();
+    window.setTimeout(() => {
+      receiptWindow.print();
+    }, 250);
+  }
 
   return (
     <div className="admin-layout">
@@ -2198,25 +2647,29 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
         <PanelSearch value={query} onChange={setQuery} placeholder="Buscar por produto, cliente ou observacao" />
         <Table
           empty="Nenhuma venda registrada."
-          headers={['Produto', 'Cliente', 'Peso', 'Total', 'Data', 'Acoes']}
-          rows={filtered.map((sale) => [
-            productName(data, sale.product_id),
-            customerName(data, sale.customer_id),
-            formatKg(sale.weight_kg),
-            formatMoney(sale.total_price),
-            formatDateTime(sale.occurred_at),
+          headers={['Produto', 'Cliente', 'Peso', 'Total', 'Data', 'Ações']}
+          rows={filtered.map((group) => [
+            group.sales.map((sale) => productName(data, sale.product_id)).join(' + '),
+            customerName(data, group.customer_id),
+            formatKg(group.weight_kg),
+            formatMoney(group.total_price),
+            formatDateTime(group.occurred_at),
             <div className="row-actions">
-              <button className="small-button" onClick={() => setViewing(sale)} type="button">
+              <button className="small-button" onClick={() => setViewing(group)} type="button">
                 Ver
               </button>
-              {isAdmin && (
+              <button className="small-button" onClick={() => exportReceipt(group)} type="button">
+                <ReceiptText size={16} />
+                Recibo
+              </button>
+              {isAdmin && group.sales.length === 1 && (
                 <>
-                  <button className="small-button" onClick={() => setEditing(sale)} type="button">
+                  <button className="small-button" onClick={() => setEditing(group.sales[0])} type="button">
                     Editar
                   </button>
                   <button
                     className="small-button danger-button"
-                    onClick={() => setDeleting(sale)}
+                    onClick={() => setDeleting(group.sales[0])}
                     type="button"
                   >
                     Apagar
@@ -2235,10 +2688,10 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
             data={data}
             products={activeProducts}
             onCancel={closeSaleModal}
-            onSubmit={(input) =>
+            onSubmit={(inputs) =>
               runAction(editing ? 'Venda atualizada e estoque ajustado.' : 'Venda registrada e estoque atualizado.', async () => {
-                if (editing) await updateSale(editing.id, input);
-                else await createSale(input);
+                if (editing) await updateSale(editing.id, inputs[0]);
+                else await Promise.all(inputs.map((input) => createSale(input)));
                 closeSaleModal();
               })
             }
@@ -2248,16 +2701,16 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
 
       {viewing && (
         <Modal title="Detalhes da venda" onClose={() => setViewing(null)}>
-          <SaleDetails sale={viewing} data={data} />
+          <SaleGroupDetails group={viewing} data={data} />
           <div className="form-actions">
             <button className="secondary-button" onClick={() => setViewing(null)} type="button">
               Fechar
             </button>
-            {isAdmin && (
+            {isAdmin && viewing.sales.length === 1 && (
               <button
                 className="primary-button"
                 onClick={() => {
-                  setEditing(viewing);
+                  setEditing(viewing.sales[0]);
                   setViewing(null);
                 }}
                 type="button"
@@ -2307,47 +2760,74 @@ function SaleForm({
   sale: Sale | null;
   data: AppData;
   products: Product[];
-  onSubmit: (input: {
-    product_id: string;
-    customer_id: string;
-    weight_kg: number;
-    unit_price: number;
-    total_price: number;
-    occurred_at: string;
-    notes: string;
-  }) => void;
+  onSubmit: (inputs: SaleFormInput[]) => void;
   onCancel: () => void;
 }) {
   const currentProduct = sale ? data.products.find((product) => product.id === sale.product_id) : null;
   const productOptions = currentProduct && !products.some((product) => product.id === currentProduct.id) ? [...products, currentProduct] : products;
-  const [productId, setProductId] = useState(sale?.product_id || '');
   const [customerId, setCustomerId] = useState(sale?.customer_id || '');
   const [quickCustomers, setQuickCustomers] = useState<Customer[]>([]);
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
-  const [weight, setWeight] = useState(sale?.weight_kg || 0);
   const [date, setDate] = useState(sale ? toInputDateTime(sale.occurred_at) : toInputDateTime());
   const [notes, setNotes] = useState(sale?.notes || '');
-  const selectedProduct = data.products.find((product) => product.id === productId);
-  const availableStock = selectedProduct ? selectedProduct.stock_kg + (sale?.product_id === productId ? sale.weight_kg : 0) : 0;
-  const customerPrice = data.customerPrices.find((price) => price.customer_id === customerId && price.product_id === productId)?.price_per_kg;
-  const suggestedPrice = customerPrice || selectedProduct?.price_per_kg || 0;
-  const [unitPrice, setUnitPrice] = useState(sale?.unit_price || 0);
-  const total = roundMoney(unitPrice * weight);
-  const blocked = Boolean(selectedProduct && weight > availableStock);
+  const [items, setItems] = useState<SaleFormItem[]>([
+    { product_id: sale?.product_id || '', weight_kg: sale ? String(sale.weight_kg) : '', unit_price: sale ? String(sale.unit_price) : '' },
+  ]);
+  const isEditing = Boolean(sale);
   const customerOptions = [...data.customers, ...quickCustomers].map(optionFromName);
+  const itemDetails = items.map((item) => {
+    const selectedProduct = data.products.find((product) => product.id === item.product_id);
+    const weightKg = parseDecimalInput(item.weight_kg);
+    const unitPrice = parseDecimalInput(item.unit_price);
+    const availableStock = selectedProduct ? selectedProduct.stock_kg + (sale?.product_id === item.product_id ? sale.weight_kg : 0) : 0;
+    const customerPrice = data.customerPrices.find((price) => price.customer_id === customerId && price.product_id === item.product_id)?.price_per_kg;
+    const suggestedPrice = customerPrice || selectedProduct?.price_per_kg || 0;
+    const total = roundMoney(unitPrice * weightKg);
+    const duplicated = Boolean(item.product_id && items.filter((current) => current.product_id === item.product_id).length > 1);
+    const blocked = Boolean(selectedProduct && weightKg > availableStock) || duplicated;
+    return { selectedProduct, availableStock, suggestedPrice, total, duplicated, blocked, weightKg, unitPrice };
+  });
+  const totalSale = itemDetails.reduce((sum, detail) => sum + detail.total, 0);
+  const hasInvalidItem = items.some((item, index) => {
+    const detail = itemDetails[index];
+    return !item.product_id || !Number.isFinite(detail.weightKg) || !Number.isFinite(detail.unitPrice) || detail.weightKg <= 0 || detail.unitPrice <= 0 || detail.blocked;
+  });
+
+  function updateItem(index: number, patch: Partial<SaleFormItem>) {
+    setItems((current) =>
+      current.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const next = { ...item, ...patch };
+        if (patch.product_id && !sale) {
+          const customerPrice = data.customerPrices.find((price) => price.customer_id === customerId && price.product_id === patch.product_id)?.price_per_kg;
+          const product = data.products.find((option) => option.id === patch.product_id);
+          next.unit_price = String(customerPrice || product?.price_per_kg || '');
+        }
+        return next;
+      }),
+    );
+  }
 
   useEffect(() => {
-    setProductId(sale?.product_id || '');
     setCustomerId(sale?.customer_id || '');
-    setWeight(sale?.weight_kg || 0);
     setDate(sale ? toInputDateTime(sale.occurred_at) : toInputDateTime());
     setNotes(sale?.notes || '');
-    setUnitPrice(sale?.unit_price || 0);
+    setItems([{ product_id: sale?.product_id || '', weight_kg: sale ? String(sale.weight_kg) : '', unit_price: sale ? String(sale.unit_price) : '' }]);
   }, [sale]);
 
   useEffect(() => {
-    if (!sale) setUnitPrice(suggestedPrice);
-  }, [customerId, productId, suggestedPrice, sale]);
+    if (sale) return;
+    setItems((current) =>
+      current.map((item) => {
+        if (!item.product_id) return item;
+        const customerPrice = data.customerPrices.find((price) => price.customer_id === customerId && price.product_id === item.product_id)?.price_per_kg;
+        const product = data.products.find((option) => option.id === item.product_id);
+        const suggestedPrice = customerPrice || product?.price_per_kg || 0;
+        if (parseDecimalInput(item.unit_price) > 0 || suggestedPrice <= 0) return item;
+        return { ...item, unit_price: String(suggestedPrice) };
+      }),
+    );
+  }, [customerId, data.customerPrices, data.products, sale]);
 
   return (
     <>
@@ -2355,18 +2835,17 @@ function SaleForm({
       className="form-grid"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit({
-          product_id: productId,
+        onSubmit(items.map((item, index) => ({
+          product_id: item.product_id,
           customer_id: customerId,
-          weight_kg: weight,
-          unit_price: unitPrice,
-          total_price: total,
+          weight_kg: itemDetails[index].weightKg,
+          unit_price: itemDetails[index].unitPrice,
+          total_price: itemDetails[index].total,
           occurred_at: fromInputDateTime(date),
           notes,
-        });
+        })));
       }}
     >
-      <Select label="Produto" value={productId} onChange={setProductId} options={productOptions.map(optionFromName)} />
       <label>
         Cliente
         <div className="inline-select-action">
@@ -2384,32 +2863,60 @@ function SaleForm({
         </div>
       </label>
       <label>
-        Peso vendido em kg
-        <input min="0.01" step="0.01" value={weight} onChange={(event) => setWeight(Number(event.target.value))} type="number" required />
-      </label>
-      <label>
-        Preco por kg
-        <input min="0.01" step="0.01" value={unitPrice} onChange={(event) => setUnitPrice(Number(event.target.value))} type="number" required />
-      </label>
-      <label>
-        Total da venda
-        <input value={total} readOnly type="number" />
-      </label>
-      <label>
         Data e hora
         <input value={date} onChange={(event) => setDate(event.target.value)} type="datetime-local" required />
       </label>
+      <div className="span-all sale-items">
+        {items.map((item, index) => {
+          const detail = itemDetails[index];
+          return (
+            <div className="sale-item" key={index}>
+              <div className="sale-item-head">
+                <strong>Produto {index + 1}</strong>
+                {!isEditing && items.length > 1 && (
+                  <button className="small-button danger-button" type="button" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
+                    Remover
+                  </button>
+                )}
+              </div>
+              <Select label="Produto" value={item.product_id} onChange={(value) => updateItem(index, { product_id: value })} options={productOptions.map(optionFromName)} />
+              <label>
+                Peso vendido em kg
+                <input inputMode="decimal" value={item.weight_kg} onChange={(event) => updateItem(index, { weight_kg: event.target.value })} placeholder="0,00" type="text" required />
+              </label>
+              <label>
+                Preco por kg
+                <input inputMode="decimal" value={item.unit_price} onChange={(event) => updateItem(index, { unit_price: event.target.value })} placeholder="0,00" type="text" required />
+              </label>
+              <label>
+                Total do produto
+                <input value={detail.total} readOnly type="number" />
+              </label>
+              {detail.selectedProduct && <div className={detail.blocked ? 'notice danger span-all' : 'notice neutral span-all'}>{detail.duplicated ? 'Selecione produtos diferentes.' : `Estoque disponivel: ${formatKg(detail.availableStock)}`}</div>}
+              {detail.selectedProduct && customerId && !detail.duplicated && <div className="notice neutral span-all">Preco sugerido: {formatMoney(detail.suggestedPrice)} por kg{detail.unitPrice < detail.suggestedPrice ? ` ? desconto de ${formatMoney(detail.suggestedPrice - detail.unitPrice)} por kg` : ''}</div>}
+            </div>
+          );
+        })}
+        {!isEditing && items.length < 2 && (
+          <button className="secondary-button add-sale-item-button" type="button" onClick={() => setItems((current) => [...current, { product_id: '', weight_kg: '', unit_price: '' }])}>
+            <Plus size={18} />
+            Adicionar produto
+          </button>
+        )}
+      </div>
+      <label>
+        Total da venda
+        <input value={totalSale} readOnly type="number" />
+      </label>
       <label className="span-all">
-        Observacao
+        Observação
         <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
       </label>
-      {selectedProduct && <div className={blocked ? 'notice danger span-all' : 'notice neutral span-all'}>Estoque disponivel: {formatKg(availableStock)}</div>}
-      {selectedProduct && customerId && <div className="notice neutral span-all">Preco sugerido: {formatMoney(suggestedPrice)} por kg{unitPrice < suggestedPrice ? ` • desconto de ${formatMoney(suggestedPrice - unitPrice)} por kg` : ''}</div>}
       <div className="form-actions">
         <button className="secondary-button" onClick={onCancel} type="button">
           Cancelar
         </button>
-        <button className="primary-button" disabled={!productId || !customerId || blocked} type="submit">
+        <button className="primary-button" disabled={!customerId || hasInvalidItem} type="submit">
           <Save size={18} />
           Salvar
         </button>
@@ -2539,11 +3046,53 @@ function SaleDetails({ sale, data, compact = false }: { sale: Sale; data: AppDat
       </div>
       {sale.notes && (
         <div>
-          <span>Observacao</span>
+          <span>Observação</span>
           <strong>{sale.notes}</strong>
         </div>
       )}
     </div>
+  );
+}
+
+function SaleGroupDetails({ group, data }: { group: SaleListGroup; data: AppData }) {
+  return (
+    <>
+      <div className="detail-grid">
+        <div>
+          <span>Cliente</span>
+          <strong>{customerName(data, group.customer_id)}</strong>
+        </div>
+        <div>
+          <span>Data</span>
+          <strong>{formatDateTime(group.occurred_at)}</strong>
+        </div>
+        <div>
+          <span>Peso total</span>
+          <strong>{formatKg(group.weight_kg)}</strong>
+        </div>
+        <div>
+          <span>Total da venda</span>
+          <strong>{formatMoney(group.total_price)}</strong>
+        </div>
+        {group.notes && (
+          <div>
+            <span>Observação</span>
+            <strong>{group.notes}</strong>
+          </div>
+        )}
+      </div>
+      <Table
+        empty="Nenhum produto nesta venda."
+        headers={['Produto', 'Peso', 'Preco por kg', 'Total']}
+        mobileCards={false}
+        rows={group.sales.map((sale) => [
+          productName(data, sale.product_id),
+          formatKg(sale.weight_kg),
+          formatMoney(sale.unit_price),
+          formatMoney(sale.total_price),
+        ])}
+      />
+    </>
   );
 }
 
@@ -2575,7 +3124,7 @@ function ExpensesPage({ data, runAction, canManage }: PageProps & { canManage: b
         <PanelSearch value={query} onChange={setQuery} placeholder="Buscar por descricao, categoria ou observacao" />
         <Table
           empty="Nenhuma despesa registrada."
-          headers={['Descricao', 'Categoria', 'Valor', 'Data', 'Acoes']}
+          headers={['Descricao', 'Categoria', 'Valor', 'Data', 'Ações']}
           rows={filtered.map((expense) => [
             expense.description,
             expenseCategoryLabel(expense.category),
@@ -2737,7 +3286,7 @@ function ExpenseForm({
         <input value={date} onChange={(event) => setDate(event.target.value)} type="datetime-local" required />
       </label>
       <label className="span-all">
-        Observacao
+        Observação
         <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
       </label>
       <div className="form-actions">
@@ -2774,7 +3323,7 @@ function ExpenseDetails({ expense, compact = false }: { expense: Expense; compac
       </div>
       {expense.notes && (
         <div>
-          <span>Observacao</span>
+          <span>Observação</span>
           <strong>{expense.notes}</strong>
         </div>
       )}
@@ -2981,7 +3530,7 @@ function AdminPage({ data, runAction }: PageProps) {
           </form>
           <Table
             empty="Nenhum subusuario vinculado."
-            headers={['Nome', 'Email', 'Acoes']}
+            headers={['Nome', 'Email', 'Ações']}
             rows={ownerOperators.map((profile) => [
               profile.name || '-',
               profile.email,
@@ -3080,7 +3629,7 @@ function ContactsPage({ type, data, runAction, canManage }: PageProps & { type: 
         <PanelSearch value={query} onChange={setQuery} placeholder={`Buscar ${title.toLowerCase()}`} />
         <Table
           empty={`Nenhum ${title.toLowerCase()} cadastrado.`}
-          headers={[title, 'Telefone', 'Documento', 'Acoes']}
+          headers={[title, 'Telefone', 'Documento', 'Ações']}
           rows={filtered.map((contact) => [
             <strong>{contact.name}</strong>,
             contact.phone || '-',
@@ -3276,7 +3825,13 @@ function ReportsPage({ data }: { data: AppData }) {
   const entries = data.entries.filter((entry) => inPeriod(entry.occurred_at));
   const productions = data.productions.filter((production) => inPeriod(production.occurred_at));
   const totalSales = sales.reduce((sum, sale) => sum + sale.total_price, 0);
+  const totalCostOfGoods = sales.reduce((sum, sale) => sum + (sale.cost_of_goods || 0), 0);
   const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  const totalPurchases = entries.reduce((sum, entry) => sum + entry.total_cost, 0);
+  const totalOutflows = totalExpenses + totalPurchases;
+  const cashBalance = totalSales - totalOutflows;
+  const grossProfit = totalSales - totalCostOfGoods;
+  const netProfit = grossProfit - totalExpenses;
   const soldKg = sales.reduce((sum, sale) => sum + sale.weight_kg, 0);
   const entryKg = entries.reduce((sum, entry) => sum + entry.weight_kg, 0);
   const lowStock = data.products.filter((product) => product.active && product.stock_kg <= product.min_stock_kg);
@@ -3300,6 +3855,16 @@ function ReportsPage({ data }: { data: AppData }) {
       expenseLabels[expense.category] || expense.category,
       expense.description,
       formatMoney(expense.amount),
+    ]);
+  const entryRows = [...entries]
+    .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
+    .map((entry) => [
+      formatDateTime(entry.occurred_at),
+      productName(data, entry.product_id),
+      supplierName(data, entry.supplier_id),
+      formatKg(entry.weight_kg),
+      formatMoney(entry.unit_cost),
+      formatMoney(entry.total_cost),
     ]);
   const productionRows = [...productions].sort((a,b)=>b.occurred_at.localeCompare(a.occurred_at)).map((production)=>[
     formatDateTime(production.occurred_at), productName(data,production.finished_product_id), formatKg(production.consumed_kg), formatKg(production.produced_kg), formatKg(production.loss_kg), `${production.yield_percent.toFixed(2)}%`, formatMoney(production.transferred_cost)
@@ -3339,14 +3904,199 @@ function ReportsPage({ data }: { data: AppData }) {
     return rows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(';')).join('\n');
   }
 
+  const escapeHtml = (value: ReactNode) =>
+    String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  const reportTable = (title: string, headers: string[], rows: ReactNode[][]) => `
+    <section class="report-section">
+      <h2>${title}</h2>
+      <table>
+        <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${
+            rows.length
+              ? rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join('')}</tr>`).join('')
+              : `<tr><td colspan="${headers.length}" class="empty">Nenhum registro no periodo.</td></tr>`
+          }
+        </tbody>
+      </table>
+    </section>
+  `;
+
+  function buildReportDocument() {
+    const summaryRows: ReactNode[][] = [
+      ['Faturamento', formatMoney(totalSales)],
+      ['Compras de estoque', formatMoney(totalPurchases)],
+      ['Despesas operacionais', formatMoney(totalExpenses)],
+      ['Gastos totais', formatMoney(totalOutflows)],
+      ['Saldo de caixa', formatMoney(cashBalance)],
+      ['Custo das vendas', formatMoney(totalCostOfGoods)],
+      ['Lucro bruto', formatMoney(grossProfit)],
+      ['Lucro liquido', formatMoney(netProfit)],
+      ['Kg vendidos', formatKg(soldKg)],
+      ['Kg recebidos', formatKg(entryKg)],
+      ['Kg produzidos', formatKg(producedKg)],
+      ['Perdas de producao', formatKg(lossKg)],
+      ['Ticket medio', formatMoney(averageTicket)],
+      ['Estoque baixo', `${lowStock.length} produtos`],
+      ['Produtos ativos', `${data.products.filter((product) => product.active).length}`],
+    ];
+
+    return `
+      <!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Relatorio RODPEL - ${escapeHtml(startDate)} a ${escapeHtml(endDate)}</title>
+          <style>
+            @page { margin: 14mm; size: A4; }
+            * { box-sizing: border-box; }
+            body {
+              color: #121a18;
+              font-family: Arial, Helvetica, sans-serif;
+              font-size: 12px;
+              line-height: 1.45;
+              margin: 0;
+            }
+            header {
+              border-bottom: 2px solid #143a38;
+              display: flex;
+              justify-content: space-between;
+              gap: 24px;
+              margin-bottom: 18px;
+              padding-bottom: 14px;
+            }
+            h1 {
+              font-size: 24px;
+              margin: 0 0 6px;
+            }
+            h2 {
+              color: #143a38;
+              font-size: 15px;
+              margin: 20px 0 8px;
+            }
+            .meta {
+              color: #52605b;
+              margin: 0;
+            }
+            .issued {
+              color: #52605b;
+              min-width: 170px;
+              text-align: right;
+            }
+            .summary {
+              display: grid;
+              gap: 8px;
+              grid-template-columns: repeat(4, 1fr);
+              margin: 14px 0 18px;
+            }
+            .summary-item {
+              border: 1px solid #dce5e2;
+              border-radius: 8px;
+              padding: 9px;
+            }
+            .summary-item span {
+              color: #64716d;
+              display: block;
+              font-size: 10px;
+              font-weight: 700;
+              margin-bottom: 4px;
+              text-transform: uppercase;
+            }
+            .summary-item strong {
+              font-size: 14px;
+            }
+            table {
+              border-collapse: collapse;
+              page-break-inside: auto;
+              width: 100%;
+            }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+            th,
+            td {
+              border: 1px solid #dce5e2;
+              padding: 6px 7px;
+              text-align: left;
+              vertical-align: top;
+            }
+            th {
+              background: #eef4f2;
+              color: #143a38;
+              font-size: 10px;
+              text-transform: uppercase;
+            }
+            .empty {
+              color: #64716d;
+              text-align: center;
+            }
+            @media print {
+              body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+            }
+          </style>
+        </head>
+        <body>
+          <header>
+            <div>
+              <h1>Relatorio RODPEL</h1>
+              <p class="meta">Periodo: ${escapeHtml(periodLabel)}</p>
+            </div>
+            <div class="issued">
+              Gerado em<br />
+              <strong>${escapeHtml(formatDateTime(new Date().toISOString()))}</strong>
+            </div>
+          </header>
+          <section class="summary">
+            ${summaryRows.map(([label, value]) => `<div class="summary-item"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join('')}
+          </section>
+          ${reportTable('Balanco do periodo', ['Indicador', 'Valor'], [
+            ['Faturamento', formatMoney(totalSales)],
+            ['Compras de estoque', formatMoney(totalPurchases)],
+            ['Despesas operacionais', formatMoney(totalExpenses)],
+            ['Gastos totais', formatMoney(totalOutflows)],
+            ['Saldo de caixa', formatMoney(cashBalance)],
+            ['Custo dos produtos vendidos', formatMoney(totalCostOfGoods)],
+            ['Lucro bruto', formatMoney(grossProfit)],
+            ['Lucro liquido', formatMoney(netProfit)],
+          ])}
+          ${reportTable('Vendas no periodo', ['Data', 'Produto', 'Cliente', 'Peso', 'Valor'], salesRows)}
+          ${reportTable('Compras no periodo', ['Data', 'Produto', 'Fornecedor', 'Peso', 'Custo/kg', 'Total'], entryRows)}
+          ${reportTable('Despesas no periodo', ['Data', 'Categoria', 'Descricao', 'Valor'], expenseRows)}
+          ${reportTable('Produção no periodo', ['Data', 'Produto', 'Consumido', 'Produzido', 'Perda', 'Rendimento', 'Custo'], productionRows)}
+          ${reportTable('Estoque atual', ['Produto', 'Categoria', 'Estoque', 'Minimo', 'Status'], stockRows)}
+        </body>
+      </html>
+    `;
+  }
+
+  function exportPdf() {
+    const reportWindow = window.open('', '_blank');
+    if (!reportWindow) return;
+    reportWindow.document.open();
+    reportWindow.document.write(buildReportDocument());
+    reportWindow.document.close();
+    reportWindow.focus();
+    window.setTimeout(() => {
+      reportWindow.print();
+    }, 250);
+  }
+
   function exportCsv() {
     const rows = [
       ['Relatorio RODPEL', `${startDate} ate ${endDate}`],
       [],
       ['Resumo'],
-      ['Vendas', formatMoney(totalSales)],
-      ['Despesas', formatMoney(totalExpenses)],
-      ['Saldo', formatMoney(totalSales - totalExpenses)],
+      ['Faturamento', formatMoney(totalSales)],
+      ['Compras de estoque', formatMoney(totalPurchases)],
+      ['Despesas operacionais', formatMoney(totalExpenses)],
+      ['Gastos totais', formatMoney(totalOutflows)],
+      ['Saldo de caixa', formatMoney(cashBalance)],
+      ['Custo das vendas', formatMoney(totalCostOfGoods)],
+      ['Lucro bruto', formatMoney(grossProfit)],
+      ['Lucro liquido', formatMoney(netProfit)],
       ['Kg vendidos', formatKg(soldKg)],
       ['Ticket medio', formatMoney(averageTicket)],
       ['Kg produzidos', formatKg(producedKg)],
@@ -3356,11 +4106,15 @@ function ReportsPage({ data }: { data: AppData }) {
       ['Data', 'Produto', 'Cliente', 'Peso', 'Valor'],
       ...salesRows.map((row) => row.map(String)),
       [],
+      ['Compras'],
+      ['Data', 'Produto', 'Fornecedor', 'Peso', 'Custo/kg', 'Total'],
+      ...entryRows.map((row) => row.map(String)),
+      [],
       ['Despesas'],
       ['Data', 'Categoria', 'Descricao', 'Valor'],
       ...expenseRows.map((row) => row.map(String)),
       [],
-      ['Producao'],
+      ['Produção'],
       ['Data','Produto','Consumido','Produzido','Perda','Rendimento','Custo'],
       ...productionRows.map((row)=>row.map(String)),
       [],
@@ -3372,12 +4126,6 @@ function ReportsPage({ data }: { data: AppData }) {
   }
 
   function exportExcel() {
-    const escapeHtml = (value: ReactNode) =>
-      String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
     const table = (title: string, headers: string[], rows: ReactNode[][]) => `
       <h2>${title}</h2>
       <table border="1"><thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join('')}</tr></thead>
@@ -3388,16 +4136,22 @@ function ReportsPage({ data }: { data: AppData }) {
       <h1>Relatorio RODPEL</h1>
       <p>Periodo: ${startDate} ate ${endDate}</p>
       ${table('Resumo', ['Indicador', 'Valor'], [
-        ['Vendas', formatMoney(totalSales)],
-        ['Despesas', formatMoney(totalExpenses)],
-        ['Saldo', formatMoney(totalSales - totalExpenses)],
+        ['Faturamento', formatMoney(totalSales)],
+        ['Compras de estoque', formatMoney(totalPurchases)],
+        ['Despesas operacionais', formatMoney(totalExpenses)],
+        ['Gastos totais', formatMoney(totalOutflows)],
+        ['Saldo de caixa', formatMoney(cashBalance)],
+        ['Custo das vendas', formatMoney(totalCostOfGoods)],
+        ['Lucro bruto', formatMoney(grossProfit)],
+        ['Lucro liquido', formatMoney(netProfit)],
         ['Kg vendidos', formatKg(soldKg)],
         ['Kg recebidos', formatKg(entryKg)],
         ['Ticket medio', formatMoney(averageTicket)],
       ])}
       ${table('Vendas', ['Data', 'Produto', 'Cliente', 'Peso', 'Valor'], salesRows)}
+      ${table('Compras', ['Data', 'Produto', 'Fornecedor', 'Peso', 'Custo/kg', 'Total'], entryRows)}
       ${table('Despesas', ['Data', 'Categoria', 'Descricao', 'Valor'], expenseRows)}
-      ${table('Producao', ['Data','Produto','Consumido','Produzido','Perda','Rendimento','Custo'], productionRows)}
+      ${table('Produção', ['Data','Produto','Consumido','Produzido','Perda','Rendimento','Custo'], productionRows)}
       ${table('Estoque', ['Produto', 'Categoria', 'Estoque', 'Minimo', 'Status'], stockRows)}
       </body></html>
     `;
@@ -3442,7 +4196,7 @@ function ReportsPage({ data }: { data: AppData }) {
           </div>
         </div>
         <div className="report-export-actions">
-          <button className="secondary-button" type="button" onClick={() => window.print()}>
+          <button className="secondary-button" type="button" onClick={exportPdf}>
             <ReceiptText size={17} />
             Gerar PDF
           </button>
@@ -3458,9 +4212,13 @@ function ReportsPage({ data }: { data: AppData }) {
       </section>
 
       <div className="content-grid report-summary">
-        <Metric icon={CircleDollarSign} label="Vendas" value={formatMoney(totalSales)} />
+        <Metric icon={CircleDollarSign} label="Faturamento" value={formatMoney(totalSales)} />
+        <Metric icon={PackagePlus} label="Compras" value={formatMoney(totalPurchases)} />
+        <Metric icon={ReceiptText} label="Gastos totais" value={formatMoney(totalOutflows)} />
+        <Metric icon={Archive} label="Saldo de caixa" value={formatMoney(cashBalance)} />
+        <Metric icon={Archive} label="Custo vendas" value={formatMoney(totalCostOfGoods)} />
         <Metric icon={ReceiptText} label="Despesas" value={formatMoney(totalExpenses)} />
-        <Metric icon={Archive} label="Saldo" value={formatMoney(totalSales - totalExpenses)} />
+        <Metric icon={CircleDollarSign} label="Lucro liquido" value={formatMoney(netProfit)} />
         <Metric icon={Boxes} label="Estoque baixo" value={`${lowStock.length} produtos`} />
         <Metric icon={ShoppingCart} label="Kg vendidos" value={formatKg(soldKg)} />
         <Metric icon={PackagePlus} label="Kg recebidos" value={formatKg(entryKg)} />
@@ -3475,70 +4233,19 @@ function ReportsPage({ data }: { data: AppData }) {
         <Table empty="Nenhuma venda no periodo." headers={['Data', 'Produto', 'Cliente', 'Peso', 'Valor']} rows={salesRows} />
       </section>
       <section className="panel report-print-section">
+        <h2>Compras no periodo</h2>
+        <Table empty="Nenhuma compra no periodo." headers={['Data', 'Produto', 'Fornecedor', 'Peso', 'Custo/kg', 'Total']} rows={entryRows} />
+      </section>
+      <section className="panel report-print-section">
         <h2>Despesas no periodo</h2>
         <Table empty="Nenhuma despesa no periodo." headers={['Data', 'Categoria', 'Descricao', 'Valor']} rows={expenseRows} />
       </section>
-      <section className="panel report-print-section"><h2>Producao no periodo</h2><Table empty="Nenhuma producao no periodo." headers={['Data','Produto','Consumido','Produzido','Perda','Rendimento','Custo']} rows={productionRows}/></section>
+      <section className="panel report-print-section"><h2>Produção no periodo</h2><Table empty="Nenhuma producao no periodo." headers={['Data','Produto','Consumido','Produzido','Perda','Rendimento','Custo']} rows={productionRows}/></section>
       <section className="panel report-print-section">
         <h2>Estoque atual</h2>
         <Table empty="Nenhum produto cadastrado." headers={['Produto', 'Categoria', 'Estoque', 'Minimo', 'Status']} rows={stockRows} />
       </section>
     </div>
-  );
-}
-
-function BackupPage({ runAction }: { runAction: (message: string, action: () => Promise<void>) => Promise<void> }) {
-  async function downloadBackup() {
-    const payload = await exportBackup();
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `papelao-gestor-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-  }
-
-  async function uploadBackup(file: File | undefined) {
-    if (!file) return;
-    const text = await file.text();
-    await importBackup(JSON.parse(text));
-  }
-
-  return (
-    <section className="panel backup-panel">
-      <h2>Backup e configuracoes</h2>
-      <p>Use exportacao antes de grandes alteracoes ou ao trocar de computador.</p>
-      <div className="backup-actions">
-        <button className="primary-button" onClick={() => runAction('Backup exportado.', downloadBackup)} type="button">
-          <Download size={18} />
-          Exportar JSON
-        </button>
-        <label className="file-button">
-          <Upload size={18} />
-          Importar JSON
-          <input
-            accept="application/json"
-            onChange={(event) => runAction('Backup importado.', () => uploadBackup(event.target.files?.[0]))}
-            type="file"
-          />
-        </label>
-      </div>
-      <div className="settings-list">
-        <div>
-          <strong>Banco de dados</strong>
-          <span>Supabase PostgreSQL com seguranca por usuario autenticado.</span>
-        </div>
-        <div>
-          <strong>Moeda e datas</strong>
-          <span>BRL, pt-BR e America/Fortaleza.</span>
-        </div>
-        <div>
-          <strong>Estoque</strong>
-          <span>Controlado em kg, com vendas bloqueadas quando nao houver quantidade suficiente.</span>
-        </div>
-      </div>
-    </section>
   );
 }
 
@@ -3927,3 +4634,4 @@ function getMessage(error: unknown) {
   if (error instanceof Error) return error.message;
   return 'Operacao nao concluida.';
 }
+

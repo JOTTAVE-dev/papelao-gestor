@@ -91,6 +91,7 @@ export type Sale = {
   weight_kg: number;
   unit_price: number;
   total_price: number;
+  cost_of_goods: number;
   occurred_at: string;
   notes: string | null;
   created_at: string;
@@ -173,5 +174,4 @@ export type Page =
   | 'customers'
   | 'admin'
   | 'voice'
-  | 'reports'
-  | 'backup';
+  | 'reports';
