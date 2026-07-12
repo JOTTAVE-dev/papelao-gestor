@@ -2179,18 +2179,19 @@ function ProductionForm({ production, rawMaterials, finishedProducts, productRec
   onSubmit: (input: { raw_material_id:string; finished_product_id:string; consumed_kg:number; produced_kg:number; occurred_at:string; notes:string }) => void; onCancel:()=>void;
 }) {
   const [finishedId,setFinishedId]=useState(production?.finished_product_id || finishedProducts[0]?.id || '');
-  const [produced,setProduced]=useState(production?.produced_kg || 0);
+  const [producedInput,setProducedInput]=useState(production ? String(production.produced_kg) : '');
   const [date,setDate]=useState(production ? toInputDateTime(production.occurred_at) : toInputDateTime());
   const [notes,setNotes]=useState(production?.notes || '');
   const recipe=productRecipes.find((item)=>item.product_id===finishedId);
   const rawId=recipe?.raw_material_id || '';
   const raw=rawMaterials.find((p)=>p.id===rawId);
+  const produced=parseDecimalInput(producedInput);
   const consumed=recipe ? roundWeight(produced * recipe.consumption_kg) : 0;
   const loss=Math.max(consumed-produced,0); const productionYield=consumed>0 ? produced/consumed*100 : 0;
   return <form className="form-grid" onSubmit={(event)=>{event.preventDefault();onSubmit({raw_material_id:rawId,finished_product_id:finishedId,consumed_kg:consumed,produced_kg:produced,occurred_at:fromInputDateTime(date),notes});}}>
     <Select label="Produto acabado" value={finishedId} onChange={setFinishedId} options={finishedProducts.map(optionFromName)}/>
     <label>Matéria-prima<input value={raw?.name || 'Ficha técnica não cadastrada'} readOnly /></label>
-    <label>Kg produzidos<input inputMode="decimal" type="text" value={produced || ''} onChange={(e)=>setProduced(parseDecimalInput(e.target.value))} placeholder="0,00" required/></label>
+    <label>Kg produzidos<input inputMode="decimal" type="text" value={producedInput} onChange={(e)=>setProducedInput(e.target.value)} placeholder="0,00" required/></label>
     <label>Kg consumidos<input value={consumed ? formatKg(consumed) : '0 kg'} readOnly /></label>
     <label>Data e hora<input type="datetime-local" value={date} onChange={(e)=>setDate(e.target.value)} required/></label>
     <label className="span-all">Observação<textarea value={notes} onChange={(e)=>setNotes(e.target.value)}/></label>
