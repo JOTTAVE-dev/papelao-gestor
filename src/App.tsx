@@ -592,7 +592,7 @@ export default function App() {
             {page === 'statement' && <StatementPage data={scopedData} />}
             {page === 'entries' && <EntriesPage data={scopedData} runAction={runAction} isAdmin={canManageRecords} />}
             {page === 'production' && <ProductionPage data={scopedData} runAction={runAction} isAdmin={canManageRecords} />}
-            {page === 'sales' && <SalesPage data={scopedData} runAction={runAction} isAdmin={isSuperAdmin} />}
+            {page === 'sales' && <SalesPage data={scopedData} runAction={runAction} isAdmin={canManageRecords} />}
             {page === 'voice' && <VoicePage data={scopedData} runAction={runAction} />}
             {page === 'expenses' && <ExpensesPage data={scopedData} runAction={runAction} canManage={canManageRecords} />}
             {page === 'suppliers' && <ContactsPage type="suppliers" data={scopedData} runAction={runAction} canManage={canManageRecords} />}
@@ -2202,12 +2202,17 @@ function ProductionForm({ production, rawMaterials, finishedProducts, productRec
 }
 
 function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean }) {
+  const pageSize = 10;
   const activeProducts = data.products.filter((product) => product.active && product.product_type === 'produto_acabado');
   const [query, setQuery] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [customerFilter, setCustomerFilter] = useState('');
+  const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const [viewing, setViewing] = useState<SaleListGroup | null>(null);
   const [editing, setEditing] = useState<Sale | null>(null);
-  const [deleting, setDeleting] = useState<Sale | null>(null);
+  const [deleting, setDeleting] = useState<SaleListGroup | null>(null);
   const saleGroups = [...data.sales]
     .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
     .reduce<SaleListGroup[]>((groups, sale) => {
@@ -2230,7 +2235,28 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
       }
       return groups;
     }, []);
-  const filtered = filterBy(saleGroups, query, (group) => `${group.sales.map((sale) => productName(data, sale.product_id)).join(' ')} ${customerName(data, group.customer_id)} ${group.notes || ''}`);
+  const startFilter = startDate ? new Date(`${startDate}T00:00:00`) : null;
+  const endFilter = endDate ? new Date(`${endDate}T23:59:59.999`) : null;
+  const dateFiltered = saleGroups.filter((group) => {
+    if (customerFilter && group.customer_id !== customerFilter) return false;
+    const date = new Date(group.occurred_at);
+    if (startFilter && date < startFilter) return false;
+    if (endFilter && date > endFilter) return false;
+    return true;
+  });
+  const filtered = filterBy(dateFiltered, query, (group) => `${group.sales.map((sale) => productName(data, sale.product_id)).join(' ')} ${customerName(data, group.customer_id)} ${group.notes || ''}`);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * pageSize;
+  const paginated = filtered.slice(pageStart, pageStart + pageSize);
+  const showingStart = filtered.length ? pageStart + 1 : 0;
+  const showingEnd = Math.min(pageStart + pageSize, filtered.length);
+  useEffect(() => {
+    setPage(1);
+  }, [query, startDate, endDate, customerFilter]);
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
   const closeSaleModal = () => {
     setCreating(false);
     setEditing(null);
@@ -2646,10 +2672,46 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
           </button>
         </div>
         <PanelSearch value={query} onChange={setQuery} placeholder="Buscar por produto, cliente ou observacao" />
+        <div className="sales-filter-grid">
+          <label>
+            Cliente
+            <select value={customerFilter} onChange={(event) => setCustomerFilter(event.target.value)}>
+              <option value="">Todos os clientes</option>
+              {data.customers
+                .slice()
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((customer) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.name}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label>
+            Data inicial
+            <input value={startDate} onChange={(event) => setStartDate(event.target.value)} type="date" />
+          </label>
+          <label>
+            Data final
+            <input value={endDate} onChange={(event) => setEndDate(event.target.value)} type="date" />
+          </label>
+          <button
+            className="secondary-button"
+            disabled={!customerFilter && !startDate && !endDate}
+            onClick={() => {
+              setCustomerFilter('');
+              setStartDate('');
+              setEndDate('');
+            }}
+            type="button"
+          >
+            Limpar filtros
+          </button>
+        </div>
         <Table
           empty="Nenhuma venda registrada."
           headers={['Produto', 'Cliente', 'Peso', 'Total', 'Data', 'Ações']}
-          rows={filtered.map((group) => [
+          rows={paginated.map((group) => [
             group.sales.map((sale) => productName(data, sale.product_id)).join(' + '),
             customerName(data, group.customer_id),
             formatKg(group.weight_kg),
@@ -2663,14 +2725,16 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
                 <ReceiptText size={16} />
                 Recibo
               </button>
-              {isAdmin && group.sales.length === 1 && (
+              {isAdmin && (
                 <>
-                  <button className="small-button" onClick={() => setEditing(group.sales[0])} type="button">
-                    Editar
-                  </button>
+                  {group.sales.length === 1 && (
+                    <button className="small-button" onClick={() => setEditing(group.sales[0])} type="button">
+                      Editar
+                    </button>
+                  )}
                   <button
                     className="small-button danger-button"
-                    onClick={() => setDeleting(group.sales[0])}
+                    onClick={() => setDeleting(group)}
                     type="button"
                   >
                     Apagar
@@ -2680,6 +2744,24 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
             </div>,
           ])}
         />
+        {filtered.length > 0 && (
+          <div className="pagination-bar">
+            <span>
+              Mostrando {showingStart}-{showingEnd} de {filtered.length}
+            </span>
+            <div className="pagination-actions">
+              <button className="small-button" disabled={currentPage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} type="button">
+                Anterior
+              </button>
+              <strong>
+                Pagina {currentPage} de {totalPages}
+              </strong>
+              <button className="small-button" disabled={currentPage >= totalPages} onClick={() => setPage((value) => Math.min(totalPages, value + 1))} type="button">
+                Proxima
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       {(creating || editing) && (
@@ -2720,6 +2802,18 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
                 Editar venda
               </button>
             )}
+            {isAdmin && (
+              <button
+                className="primary-button danger-solid-button"
+                onClick={() => {
+                  setDeleting(viewing);
+                  setViewing(null);
+                }}
+                type="button"
+              >
+                Apagar venda
+              </button>
+            )}
           </div>
         </Modal>
       )}
@@ -2727,7 +2821,7 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
       {deleting && (
         <Modal title="Apagar venda" onClose={() => setDeleting(null)}>
           <div className="notice danger">Apagar esta venda e devolver o peso ao estoque?</div>
-          <SaleDetails sale={deleting} data={data} compact />
+          <SaleGroupDetails group={deleting} data={data} />
           <div className="form-actions">
             <button className="secondary-button" onClick={() => setDeleting(null)} type="button">
               Cancelar
@@ -2736,7 +2830,7 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
               className="primary-button danger-solid-button"
               onClick={() =>
                 runAction('Venda apagada.', async () => {
-                  await deleteSale(deleting.id);
+                  await Promise.all(deleting.sales.map((sale) => deleteSale(sale.id)));
                   setDeleting(null);
                 })
               }
@@ -2761,7 +2855,7 @@ function SaleForm({
   sale: Sale | null;
   data: AppData;
   products: Product[];
-  onSubmit: (inputs: SaleFormInput[]) => void;
+  onSubmit: (inputs: SaleFormInput[]) => Promise<void> | void;
   onCancel: () => void;
 }) {
   const currentProduct = sale ? data.products.find((product) => product.id === sale.product_id) : null;
@@ -2771,6 +2865,7 @@ function SaleForm({
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
   const [date, setDate] = useState(sale ? toInputDateTime(sale.occurred_at) : toInputDateTime());
   const [notes, setNotes] = useState(sale?.notes || '');
+  const [saving, setSaving] = useState(false);
   const [items, setItems] = useState<SaleFormItem[]>([
     { product_id: sale?.product_id || '', weight_kg: sale ? String(sale.weight_kg) : '', unit_price: sale ? String(sale.unit_price) : '' },
   ]);
@@ -2834,17 +2929,22 @@ function SaleForm({
     <>
     <form
       className="form-grid"
-      onSubmit={(event) => {
+      onSubmit={async (event) => {
         event.preventDefault();
-        onSubmit(items.map((item, index) => ({
-          product_id: item.product_id,
-          customer_id: customerId,
-          weight_kg: itemDetails[index].weightKg,
-          unit_price: itemDetails[index].unitPrice,
-          total_price: itemDetails[index].total,
-          occurred_at: fromInputDateTime(date),
-          notes,
-        })));
+        setSaving(true);
+        try {
+          await onSubmit(items.map((item, index) => ({
+            product_id: item.product_id,
+            customer_id: customerId,
+            weight_kg: itemDetails[index].weightKg,
+            unit_price: itemDetails[index].unitPrice,
+            total_price: itemDetails[index].total,
+            occurred_at: fromInputDateTime(date),
+            notes,
+          })));
+        } finally {
+          setSaving(false);
+        }
       }}
     >
       <label>
@@ -2858,7 +2958,7 @@ function SaleForm({
               </option>
             ))}
           </select>
-          <button className="icon-button inline-add-button" onClick={() => setQuickCustomerOpen(true)} title="Cadastrar cliente rapido" type="button">
+          <button className="icon-button inline-add-button" onClick={() => setQuickCustomerOpen(true)} title="Cadastrar cliente rápido" type="button">
             <Plus size={18} />
           </button>
         </div>
@@ -2886,19 +2986,19 @@ function SaleForm({
                 <input inputMode="decimal" value={item.weight_kg} onChange={(event) => updateItem(index, { weight_kg: event.target.value })} placeholder="0,00" type="text" required />
               </label>
               <label>
-                Preco por kg
-                <input inputMode="decimal" value={item.unit_price} onChange={(event) => updateItem(index, { unit_price: event.target.value })} placeholder="0,00" type="text" required />
+                Preço por kg (R$)
+                <input inputMode="decimal" value={item.unit_price} onChange={(event) => updateItem(index, { unit_price: event.target.value })} placeholder="R$ 0,00" type="text" required />
               </label>
               <label>
-                Total do produto
+                Total do produto (R$)
                 <input value={detail.total} readOnly type="number" />
               </label>
-              {detail.selectedProduct && <div className={detail.blocked ? 'notice danger span-all' : 'notice neutral span-all'}>{detail.duplicated ? 'Selecione produtos diferentes.' : `Estoque disponivel: ${formatKg(detail.availableStock)}`}</div>}
-              {detail.selectedProduct && customerId && !detail.duplicated && <div className="notice neutral span-all">Preco sugerido: {formatMoney(detail.suggestedPrice)} por kg{detail.unitPrice < detail.suggestedPrice ? ` ? desconto de ${formatMoney(detail.suggestedPrice - detail.unitPrice)} por kg` : ''}</div>}
+              {detail.selectedProduct && <div className={detail.blocked ? 'notice danger span-all' : 'notice neutral span-all'}>{detail.duplicated ? 'Selecione produtos diferentes.' : `Estoque disponível: ${formatKg(detail.availableStock)}`}</div>}
+              {detail.selectedProduct && customerId && !detail.duplicated && <div className="notice neutral span-all">Preço sugerido: {formatMoney(detail.suggestedPrice)} por kg{detail.unitPrice < detail.suggestedPrice ? ` - desconto de ${formatMoney(detail.suggestedPrice - detail.unitPrice)} por kg` : ''}</div>}
             </div>
           );
         })}
-        {!isEditing && items.length < 2 && (
+        {!isEditing && (
           <button className="secondary-button add-sale-item-button" type="button" onClick={() => setItems((current) => [...current, { product_id: '', weight_kg: '', unit_price: '' }])}>
             <Plus size={18} />
             Adicionar produto
@@ -2906,7 +3006,7 @@ function SaleForm({
         )}
       </div>
       <label>
-        Total da venda
+        Total da venda (R$)
         <input value={totalSale} readOnly type="number" />
       </label>
       <label className="span-all">
@@ -2914,17 +3014,17 @@ function SaleForm({
         <textarea value={notes} onChange={(event) => setNotes(event.target.value)} />
       </label>
       <div className="form-actions">
-        <button className="secondary-button" onClick={onCancel} type="button">
+        <button className="secondary-button" disabled={saving} onClick={onCancel} type="button">
           Cancelar
         </button>
-        <button className="primary-button" disabled={!customerId || hasInvalidItem} type="submit">
-          <Save size={18} />
-          Salvar
+        <button className="primary-button" disabled={saving || !customerId || hasInvalidItem} type="submit">
+          {saving ? <RefreshCcw className="spin-icon" size={18} /> : <Save size={18} />}
+          {saving ? 'Salvando...' : 'Salvar'}
         </button>
       </div>
     </form>
     {quickCustomerOpen && (
-      <Modal title="Cliente rapido" onClose={() => setQuickCustomerOpen(false)}>
+      <Modal title="Cliente rápido" onClose={() => setQuickCustomerOpen(false)}>
         <QuickCustomerForm
           onCancel={() => setQuickCustomerOpen(false)}
           onSubmit={async (name) => {

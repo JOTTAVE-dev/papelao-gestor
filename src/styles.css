@@ -1297,6 +1297,48 @@ tr:hover td {
   padding-left: 0;
 }
 
+.sales-filter-grid {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(0, 180px)) auto;
+  margin-bottom: 14px;
+}
+
+.pagination-bar {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.86rem;
+  font-weight: 800;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+
+.pagination-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pagination-actions strong {
+  color: var(--text);
+  font-size: 0.84rem;
+}
+
+.spin-icon {
+  animation: spin 0.85s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .span-all {
   grid-column: 1 / -1;
 }
@@ -2625,6 +2667,27 @@ tr:hover td {
   .search-box input {
     font-size: 16px;
     min-height: 40px;
+  }
+
+  .sales-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sales-filter-grid .secondary-button {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .pagination-bar,
+  .pagination-actions {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .pagination-actions .small-button {
+    justify-content: center;
+    width: 100%;
   }
 
   .row-actions,
