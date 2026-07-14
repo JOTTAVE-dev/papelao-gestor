@@ -2211,7 +2211,7 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
   const [viewing, setViewing] = useState<SaleListGroup | null>(null);
-  const [editing, setEditing] = useState<Sale | null>(null);
+  const [editing, setEditing] = useState<SaleListGroup | null>(null);
   const [deleting, setDeleting] = useState<SaleListGroup | null>(null);
   const saleGroups = [...data.sales]
     .sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))
@@ -2237,13 +2237,16 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
     }, []);
   const startFilter = startDate ? new Date(`${startDate}T00:00:00`) : null;
   const endFilter = endDate ? new Date(`${endDate}T23:59:59.999`) : null;
-  const dateFiltered = saleGroups.filter((group) => {
-    if (customerFilter && group.customer_id !== customerFilter) return false;
-    const date = new Date(group.occurred_at);
-    if (startFilter && date < startFilter) return false;
-    if (endFilter && date > endFilter) return false;
-    return true;
-  });
+  const hasActiveFilters = Boolean(customerFilter || startDate || endDate);
+  const dateFiltered = hasActiveFilters
+    ? saleGroups.filter((group) => {
+        if (customerFilter && group.customer_id !== customerFilter) return false;
+        const date = new Date(group.occurred_at);
+        if (startFilter && date < startFilter) return false;
+        if (endFilter && date > endFilter) return false;
+        return true;
+      })
+    : saleGroups;
   const filtered = filterBy(dateFiltered, query, (group) => `${group.sales.map((sale) => productName(data, sale.product_id)).join(' ')} ${customerName(data, group.customer_id)} ${group.notes || ''}`);
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -2697,7 +2700,7 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
           </label>
           <button
             className="secondary-button"
-            disabled={!customerFilter && !startDate && !endDate}
+            disabled={!hasActiveFilters}
             onClick={() => {
               setCustomerFilter('');
               setStartDate('');
@@ -2727,11 +2730,9 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
               </button>
               {isAdmin && (
                 <>
-                  {group.sales.length === 1 && (
-                    <button className="small-button" onClick={() => setEditing(group.sales[0])} type="button">
-                      Editar
-                    </button>
-                  )}
+                  <button className="small-button" onClick={() => setEditing(group)} type="button">
+                    Editar
+                  </button>
                   <button
                     className="small-button danger-button"
                     onClick={() => setDeleting(group)}
@@ -2767,14 +2768,22 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
       {(creating || editing) && (
         <Modal title={editing ? 'Editar venda' : 'Nova venda'} onClose={closeSaleModal}>
           <SaleForm
-            sale={editing}
+            saleGroup={editing}
             data={data}
             products={activeProducts}
             onCancel={closeSaleModal}
             onSubmit={(inputs) =>
               runAction(editing ? 'Venda atualizada e estoque ajustado.' : 'Venda registrada e estoque atualizado.', async () => {
-                if (editing) await updateSale(editing.id, inputs[0]);
-                else await Promise.all(inputs.map((input) => createSale(input)));
+                if (editing) {
+                  await Promise.all(inputs.map((input, index) => {
+                    const existing = editing.sales[index];
+                    return existing ? updateSale(existing.id, input) : createSale(input);
+                  }));
+                  const removedSales = editing.sales.slice(inputs.length);
+                  await Promise.all(removedSales.map((sale) => deleteSale(sale.id)));
+                } else {
+                  await Promise.all(inputs.map((input) => createSale(input)));
+                }
                 closeSaleModal();
               })
             }
@@ -2789,11 +2798,11 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
             <button className="secondary-button" onClick={() => setViewing(null)} type="button">
               Fechar
             </button>
-            {isAdmin && viewing.sales.length === 1 && (
+            {isAdmin && (
               <button
                 className="primary-button"
                 onClick={() => {
-                  setEditing(viewing.sales[0]);
+                  setEditing(viewing);
                   setViewing(null);
                 }}
                 type="button"
@@ -2846,36 +2855,45 @@ function SalesPage({ data, runAction, isAdmin }: PageProps & { isAdmin: boolean 
 }
 
 function SaleForm({
-  sale,
+  saleGroup,
   data,
   products,
   onSubmit,
   onCancel,
 }: {
-  sale: Sale | null;
+  saleGroup: SaleListGroup | null;
   data: AppData;
   products: Product[];
   onSubmit: (inputs: SaleFormInput[]) => Promise<void> | void;
   onCancel: () => void;
 }) {
-  const currentProduct = sale ? data.products.find((product) => product.id === sale.product_id) : null;
-  const productOptions = currentProduct && !products.some((product) => product.id === currentProduct.id) ? [...products, currentProduct] : products;
-  const [customerId, setCustomerId] = useState(sale?.customer_id || '');
+  const groupSales = saleGroup?.sales || [];
+  const currentProducts = groupSales
+    .map((sale) => data.products.find((product) => product.id === sale.product_id))
+    .filter((product): product is Product => Boolean(product));
+  const productOptions = currentProducts.reduce<Product[]>(
+    (options, product) => (options.some((option) => option.id === product.id) ? options : [...options, product]),
+    [...products],
+  );
+  const initialItems = (groupSales.length ? groupSales : [null]).map((sale) => ({
+    product_id: sale?.product_id || '',
+    weight_kg: sale ? String(sale.weight_kg) : '',
+    unit_price: sale ? String(sale.unit_price) : '',
+  }));
+  const [customerId, setCustomerId] = useState(saleGroup?.customer_id || '');
   const [quickCustomers, setQuickCustomers] = useState<Customer[]>([]);
   const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
-  const [date, setDate] = useState(sale ? toInputDateTime(sale.occurred_at) : toInputDateTime());
-  const [notes, setNotes] = useState(sale?.notes || '');
+  const [date, setDate] = useState(saleGroup ? toInputDateTime(saleGroup.occurred_at) : toInputDateTime());
+  const [notes, setNotes] = useState(saleGroup?.notes || '');
   const [saving, setSaving] = useState(false);
-  const [items, setItems] = useState<SaleFormItem[]>([
-    { product_id: sale?.product_id || '', weight_kg: sale ? String(sale.weight_kg) : '', unit_price: sale ? String(sale.unit_price) : '' },
-  ]);
-  const isEditing = Boolean(sale);
+  const [items, setItems] = useState<SaleFormItem[]>(initialItems);
   const customerOptions = [...data.customers, ...quickCustomers].map(optionFromName);
-  const itemDetails = items.map((item) => {
+  const itemDetails = items.map((item, index) => {
+    const originalSale = groupSales[index];
     const selectedProduct = data.products.find((product) => product.id === item.product_id);
     const weightKg = parseDecimalInput(item.weight_kg);
     const unitPrice = parseDecimalInput(item.unit_price);
-    const availableStock = selectedProduct ? selectedProduct.stock_kg + (sale?.product_id === item.product_id ? sale.weight_kg : 0) : 0;
+    const availableStock = selectedProduct ? selectedProduct.stock_kg + (originalSale?.product_id === item.product_id ? originalSale.weight_kg : 0) : 0;
     const customerPrice = data.customerPrices.find((price) => price.customer_id === customerId && price.product_id === item.product_id)?.price_per_kg;
     const suggestedPrice = customerPrice || selectedProduct?.price_per_kg || 0;
     const total = roundMoney(unitPrice * weightKg);
@@ -2894,7 +2912,7 @@ function SaleForm({
       current.map((item, itemIndex) => {
         if (itemIndex !== index) return item;
         const next = { ...item, ...patch };
-        if (patch.product_id && !sale) {
+        if (patch.product_id) {
           const customerPrice = data.customerPrices.find((price) => price.customer_id === customerId && price.product_id === patch.product_id)?.price_per_kg;
           const product = data.products.find((option) => option.id === patch.product_id);
           next.unit_price = String(customerPrice || product?.price_per_kg || '');
@@ -2905,14 +2923,13 @@ function SaleForm({
   }
 
   useEffect(() => {
-    setCustomerId(sale?.customer_id || '');
-    setDate(sale ? toInputDateTime(sale.occurred_at) : toInputDateTime());
-    setNotes(sale?.notes || '');
-    setItems([{ product_id: sale?.product_id || '', weight_kg: sale ? String(sale.weight_kg) : '', unit_price: sale ? String(sale.unit_price) : '' }]);
-  }, [sale]);
+    setCustomerId(saleGroup?.customer_id || '');
+    setDate(saleGroup ? toInputDateTime(saleGroup.occurred_at) : toInputDateTime());
+    setNotes(saleGroup?.notes || '');
+    setItems(initialItems);
+  }, [saleGroup]);
 
   useEffect(() => {
-    if (sale) return;
     setItems((current) =>
       current.map((item) => {
         if (!item.product_id) return item;
@@ -2923,7 +2940,7 @@ function SaleForm({
         return { ...item, unit_price: String(suggestedPrice) };
       }),
     );
-  }, [customerId, data.customerPrices, data.products, sale]);
+  }, [customerId, data.customerPrices, data.products]);
 
   return (
     <>
@@ -2974,7 +2991,7 @@ function SaleForm({
             <div className="sale-item" key={index}>
               <div className="sale-item-head">
                 <strong>Produto {index + 1}</strong>
-                {!isEditing && items.length > 1 && (
+                {items.length > 1 && (
                   <button className="small-button danger-button" type="button" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))}>
                     Remover
                   </button>
@@ -2998,12 +3015,10 @@ function SaleForm({
             </div>
           );
         })}
-        {!isEditing && (
-          <button className="secondary-button add-sale-item-button" type="button" onClick={() => setItems((current) => [...current, { product_id: '', weight_kg: '', unit_price: '' }])}>
-            <Plus size={18} />
-            Adicionar produto
-          </button>
-        )}
+        <button className="secondary-button add-sale-item-button" type="button" onClick={() => setItems((current) => [...current, { product_id: '', weight_kg: '', unit_price: '' }])}>
+          <Plus size={18} />
+          Adicionar produto
+        </button>
       </div>
       <label>
         Total da venda (R$)
