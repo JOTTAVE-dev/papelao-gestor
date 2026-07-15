@@ -232,6 +232,8 @@ export default function App() {
   const [page, setPage] = useState<Page>(() => pageFromLocation());
   const [data, setData] = useState<AppData>(emptyData);
   const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionMessage, setActionMessage] = useState('');
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [sidebarPinned, setSidebarPinned] = useState(false);
@@ -304,12 +306,18 @@ export default function App() {
   async function runAction(successMessage: string, action: () => Promise<void>) {
     setError('');
     setNotice('');
+    setActionMessage('Salvando alterações...');
+    setActionLoading(true);
     try {
       await action();
+      setActionMessage('Atualizando dados...');
       await refresh();
       setNotice(successMessage);
     } catch (err) {
       setError(getMessage(err));
+    } finally {
+      setActionLoading(false);
+      setActionMessage('');
     }
   }
 
@@ -350,6 +358,7 @@ export default function App() {
       : data;
   const visibleNavItems = navItems.filter((item) => item.page !== 'admin' || canOpenAdmin);
   const visibleNavItemByPage = new Map(visibleNavItems.map((item) => [item.page, item]));
+  const busyMessage = actionLoading ? actionMessage || 'Processando...' : loading ? 'Carregando dados...' : '';
 
   function navigateTo(nextPage: Page, options?: { replace?: boolean }) {
     const targetPage = nextPage === 'admin' && data.currentProfile && !canOpenAdmin ? 'dashboard' : nextPage;
@@ -545,12 +554,20 @@ export default function App() {
                 refresh();
               }}
               title="Atualizar dados"
+              disabled={loading || actionLoading}
               type="button"
             >
-              <RefreshCcw size={18} />
+              <RefreshCcw className={loading || actionLoading ? 'spin-icon' : undefined} size={18} />
             </button>
           </div>
         </header>
+
+        {busyMessage && (
+          <div className="global-loading" role="status" aria-live="polite">
+            <RefreshCcw className="spin-icon" size={18} />
+            <span>{busyMessage}</span>
+          </div>
+        )}
 
         <section className="page-heading">
           <div>
@@ -602,6 +619,7 @@ export default function App() {
           </>
         )}
       </main>
+      {actionLoading && <div className="busy-overlay" aria-hidden="true" />}
       <nav className="mobile-bottom-nav" aria-label="Navegação principal mobile">
         <div className={mobileMenuOpen === 'more' ? 'bottom-menu-wrap open' : 'bottom-menu-wrap'}>
           <div className="bottom-create-popover bottom-side-popover">

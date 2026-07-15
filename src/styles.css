@@ -977,6 +977,34 @@ nav {
   gap: 10px;
 }
 
+.global-loading {
+  align-items: center;
+  background: rgba(17, 24, 39, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.18);
+  color: #fff;
+  display: inline-flex;
+  font-size: 0.9rem;
+  font-weight: 850;
+  gap: 10px;
+  left: 50%;
+  min-height: 44px;
+  padding: 10px 14px;
+  position: fixed;
+  top: 18px;
+  transform: translateX(-50%);
+  z-index: 70;
+}
+
+.busy-overlay {
+  background: rgba(255, 255, 255, 0.12);
+  cursor: wait;
+  inset: 0;
+  position: fixed;
+  z-index: 45;
+}
+
 .icon-button {
   height: 42px;
   padding: 0;
